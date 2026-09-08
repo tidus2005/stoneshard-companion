@@ -1,0 +1,16 @@
+.tools/
+**/bin/
+**/obj/
+**/__pycache__/
+artifacts/
+test-sandbox/
+*.user
+*.suo
+research/native-references.json
+research/local-*.json
+docs/assets/
+docs/verification-results.json
+.env
+.env.*
+*.sav
+*.dmp
