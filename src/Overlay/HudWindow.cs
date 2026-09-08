@@ -16,6 +16,7 @@ public sealed class HudWindow : Window
     private readonly TextBlock[] values=new TextBlock[4];
     private readonly TextBlock footer=new(){FontSize=10,Foreground=Brushes.Silver,TextTrimming=TextTrimming.CharacterEllipsis};
     private readonly Button speed,drink,torch,labels;
+    private readonly Button walkKeys=new(){FontSize=11,Padding=new Thickness(5,0,5,0),Focusable=false,MinWidth=132};
     private readonly List<(Button Button,int Direction)> navigation=[];
     private bool walking;
     private nint handle;
@@ -40,7 +41,9 @@ public sealed class HudWindow : Window
         foreach(var h in new[]{new GridLength(22),new GridLength(26),new GridLength(1,GridUnitType.Star),new GridLength(18)})body.RowDefinitions.Add(new RowDefinition{Height=h});
         root.Children.Add(new Border{Child=body,Background=new SolidColorBrush(Color.FromArgb(246,24,23,30)),BorderBrush=new SolidColorBrush(Color.FromRgb(109,96,116)),BorderThickness=new Thickness(2)});
         var grip=MakeThumb(HudCorner.Move,Cursors.SizeAll);
-        grip.Template=TextThumbTemplate("⋮⋮   行旅辅助",false);grip.ToolTip="拖动此处移动面板；拖动四角改变大小";body.Children.Add(grip);
+        grip.Template=TextThumbTemplate("⋮⋮   行旅辅助",false);grip.ToolTip="拖动此处移动面板；拖动四角改变大小";
+        var header=new DockPanel();DockPanel.SetDock(walkKeys,Dock.Right);header.Children.Add(walkKeys);header.Children.Add(grip);body.Children.Add(header);
+        AutomationProperties.SetName(walkKeys,"方向键自动移动");walkKeys.Click+=(_,_)=>owner.ToggleWalkKeys();
         var stats=new UniformGrid{Columns=4};Grid.SetRow(stats,1);body.Children.Add(stats);
         string[] names=["饥饿","口渴","疼痛","迷醉"],icons=["meat","water-flask","broken-heart","poison-bottle"];
         for(int i=0;i<4;i++){
@@ -52,7 +55,7 @@ public sealed class HudWindow : Window
         actionArea.ColumnDefinitions.Add(new ColumnDefinition());
         var compass=new Grid{Width=HudGeometry.NavigationSize,Height=HudGeometry.NavigationSize,HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Center};
         for(int i=0;i<3;i++){compass.RowDefinitions.Add(new RowDefinition());compass.ColumnDefinitions.Add(new ColumnDefinition());}
-        foreach(var (direction,symbol,name,row,column) in new[]{(1,"↑","向上跨图",0,1),(2,"↓","向下跨图",2,1),(3,"←","向左跨图",1,0),(4,"→","向右跨图",1,2),(5,"◎","走到地图中心",1,1)}){
+        foreach(var (direction,symbol,name,row,column) in new[]{(6,"↖","走到左上角",0,0),(1,"↑","向上跨图",0,1),(7,"↗","走到右上角",0,2),(3,"←","向左跨图",1,0),(5,"◎","走到地图中心",1,1),(4,"→","向右跨图",1,2),(8,"↙","走到左下角",2,0),(2,"↓","向下跨图",2,1),(9,"↘","走到右下角",2,2)}){
             var button=new Button{Content=symbol,FontSize=22,Padding=new Thickness(0),Margin=new Thickness(1),ToolTip=name};
             AutomationProperties.SetName(button,name);button.Click+=(_,_)=>coordinator.Walk(walking?0:direction);
             Grid.SetRow(button,row);Grid.SetColumn(button,column);compass.Children.Add(button);navigation.Add((button,direction));
@@ -146,6 +149,11 @@ public sealed class HudWindow : Window
         foreach(var cell in cells)cell.Button.IsEnabled=cell.Capability==0||usable&&(state!.Capabilities&cell.Capability)!=0;
         drink.IsEnabled=torch.IsEnabled=usable;
         bool current=state is {Ready:true,Fresh:true,SceneReady:true};
+        bool keysWanted=coordinator.Preferences.AutoWalkKeys;
+        bool keysActive=keysWanted&&state is {Ready:true,Fresh:true,SceneReady:true,WalkKeysEnabled:true}&&foreground&&(state.UiFlags&~8u)==0;
+        walkKeys.Content=keysWanted?(keysActive?"方向键自动移动：开":"方向键自动移动：待命"):"方向键自动移动：关";
+        walkKeys.Foreground=keysActive?Active:Muted;walkKeys.BorderBrush=keysWanted?Active:Muted;
+        walkKeys.ToolTip="开启后轻按 ↑ ↓ ← →，沿人物所在列或行走到地图边缘后停下。\n再次按方向键停步；长按不重复。仅游戏前台生效，面板内保留原按键操作。\n关闭开关会停止本模式的行走。";
         double[] readings=[state?.Hunger??double.NaN,state?.Thirst??double.NaN,state?.Pain??double.NaN,state?.Intoxication??double.NaN];
         for(int i=0;i<4;i++){bool valid=current&&(state!.VitalValid&(1u<<i))!=0&&double.IsFinite(readings[i]);values[i].Text=valid?$"{readings[i]:0}%":"—";}
         cells[0].Button.ToolTip=!current?"等待进入游戏":state!.VisorState<0?"当前头盔没有可开合面甲":state.VisorState==1?"面甲已打开 · 点击关闭":"面甲已关闭 · 点击打开";
@@ -161,8 +169,8 @@ public sealed class HudWindow : Window
         walking=current&&state!.WalkState==1;
         foreach(var (button,direction) in navigation){
             button.IsEnabled=state is not null&&HudPolicy.CanWalk(state.Ready,state.Fresh,state.SceneReady,foreground,state.UiFlags)&&(state.Capabilities&64)!=0;
-            button.BorderBrush=walking&&state!.WalkDirection==direction?Active:Muted;
-            button.ToolTip=walking?state!.WalkStatus+"\n点击任一方向停止 · Ctrl+Alt+End":direction==5?"角色走到地图中心 · Ctrl+Alt+Home":$"向{(direction==1?"上":direction==2?"下":direction==3?"左":"右")}走到边缘并切入相邻地图 · 遇敌停止";
+            button.BorderBrush=walking&&(state!.WalkDirection==direction||state.WalkDirection==direction+10)?Active:Muted;
+            button.ToolTip=walking?state!.WalkStatus+"\n点击任一方向停止 · Ctrl+Alt+End":direction==5?"角色走到地图中心 · Ctrl+Alt+Home":direction>=6?$"走到地图{EngineState.WalkDestinationName(direction)}后停下 · 遇敌停止":$"走到{EngineState.WalkDestinationName(direction)}并切入相邻地图 · 遇敌停止";
         }
         // Keep backup progress/results visible even after a completed journey.
         footer.Text=coordinator.Saves.Busy?coordinator.SaveStatus:walking?state!.WalkStatus:!current||coordinator.SaveStatus!="备份保存已落盘的进度"?coordinator.SaveStatus:state!.WalkState>1?state.WalkStatus:coordinator.Preferences.AutoDrink||coordinator.Preferences.AutoTorch?coordinator.SupplyStatus:coordinator.SaveStatus;

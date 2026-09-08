@@ -16,6 +16,8 @@ public sealed class SettingsWindow : Window
         status=new TextBlock{Text=owner.Status,TextWrapping=TextWrapping.Wrap,Foreground=Brushes.LightGray};panel.Children.Add(status);
         AddText("拖动面板顶部移动位置，拖动四角调整宽高，按钮随形状自动排列。位置与尺寸会保存；仅打开状态栏或物品栏时自动避让；主菜单、断线和退出游戏后仍保留备份入口。");
         Check("物品常显（移动、装备栏和切图后保持）",()=>owner.Preferences.ShowLabels,v=>owner.Preferences.ShowLabels=v);
+        Check("方向键自动移动（沿人物所在行或列走到边缘）",()=>owner.Preferences.AutoWalkKeys,v=>owner.Preferences.AutoWalkKeys=v);
+        AddText("九宫格的斜向键走到四个角点后停下，中心键走到地图中心。开启方向键自动移动后，轻按普通方向键沿人物当前行或列寻路到边缘，不跨图；再按一次方向键停步，长按不重复。开关会保存，仅在游戏前台且未打开面板时生效。关闭此开关也会停止键盘发起的行走。");
         Check("进入新地图时镜头自动居中",()=>owner.Preferences.AutoCenter,v=>owner.Preferences.AutoCenter=v);
         Check("下次启动游戏沿用倍率",()=>owner.Preferences.RememberSpeed,v=>{owner.Preferences.RememberSpeed=v;owner.Preferences.LastSpeed=owner.PreferredSpeed;});
         AddText("状态栏和背包打开时保持所选速度；暂停菜单、对话和大地图中暂回正常。自动走图沿用原版寻路与回合消耗，到边缘后再跨入相邻地图，进入新地图后结束；手动接管、遇敌、打开面板或切到后台时结束。不可达目标或出口会停止并提示。左侧中心键让角色走到地图中央，行走中点击任一方向键停步。");

@@ -115,6 +115,8 @@ public partial class MainWindow : Window
             if(state.Ready&&state.Fresh&&!busy&&state.AutoCenter!=Preferences.AutoCenter)await SendAsync(EngineCommand.AutoCenter,Preferences.AutoCenter?1:0,false);
             if(state.Ready&&state.Fresh&&!busy&&(state.HighlightState==1)!=Preferences.ShowLabels)await SendAsync(EngineCommand.HighlightSet,Preferences.ShowLabels?1:0,false);
             if(closing)return;
+            if(state.Ready&&state.Fresh&&!busy&&state.WalkKeysEnabled!=Preferences.AutoWalkKeys){await SendAsync(EngineCommand.WalkKeysSet,Preferences.AutoWalkKeys?1:0,false);if(closing)return;state=bridge.ReadState();}
+            if(closing)return;
             if(!busy){
                 var observation=new SupplyObservation(Environment.TickCount64,state.SceneGeneration,usable,front,state.WalkState!=1&&(state.SupplyFlags&2)!=0&&!Saves.Busy&&!hud.IsInteracting,(state.SupplyFlags&1)!=0,(state.VitalValid&2)!=0?state.Thirst:double.NaN,state.WaterUses,state.TorchState,state.TorchCount,true);
                 var action=supply.Evaluate(observation,Preferences.AutoDrink,Preferences.AutoTorch,Preferences.DrinkThreshold);
@@ -150,10 +152,11 @@ public partial class MainWindow : Window
     }
     public void Reset()
     {
-        intent.Stop();Preferences.LastSpeed=1;Preferences.AutoCenter=false;Preferences.ShowLabels=false;Preferences.AutoDrink=false;Preferences.AutoTorch=false;supply.Reset();SavePreferences();resetPending=true;
+        intent.Stop();Preferences.LastSpeed=1;Preferences.AutoCenter=false;Preferences.ShowLabels=false;Preferences.AutoDrink=false;Preferences.AutoTorch=false;Preferences.AutoWalkKeys=false;supply.Reset();SavePreferences();resetPending=true;
         UserPreferences.Log("explicit-reset");SetStatus("已选择正常速度，正在恢复");
     }
     public void ToggleLabels(){Preferences.ShowLabels=!Preferences.ShowLabels;SavePreferences();ReturnToGame();}
+    public void ToggleWalkKeys(){Preferences.AutoWalkKeys=!Preferences.AutoWalkKeys;SavePreferences();ReturnToGame();}
     private bool ReturnToGame()
     {
         if(session is null)return false;

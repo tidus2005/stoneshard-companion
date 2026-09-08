@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 #define BRIDGE_MAGIC 0x53484331u
-#define BRIDGE_VERSION 5u
+#define BRIDGE_VERSION 6u
 #define BRIDGE_MESSAGE (WM_APP + 0x437)
 #define CMD_REFRESH 1
 #define CMD_SPEED 2
@@ -68,11 +68,12 @@ typedef struct SharedState {
     double torch_duration;           // 3904; -1 when unavailable
     uint32_t highlight_applied;      // 3912 independent from requested state
     uint32_t walk_state;             // 3916
-    int32_t walk_direction;          // 3920: 1 north, 2 south, 3 west, 4 east, 5 center
+    int32_t walk_direction;          // 3920: 1..4 N/S/W/E, 5 center, 6..9 NW/NE/SW/SE; 11..14 character-relative
     uint32_t label_hook_ready;       // 3924
     double walk_x,walk_y;            // 3928,3936
     uint64_t label_draw_calls,label_draw_overrides; // 3944,3952
     uint32_t walk_phase;             // 3960: 0 approach/center, 1 exit tile
+    uint32_t walk_keys_enabled;      // 3964: unmodified arrow key intent
 } SharedState;
 
 _Static_assert(sizeof(SharedState) <= 4096, "mapping bounds");
@@ -86,4 +87,5 @@ _Static_assert(offsetof(SharedState,torch_duration)==3904,"torch duration ABI");
 _Static_assert(offsetof(SharedState,highlight_applied)==3912,"highlight applied ABI");
 _Static_assert(offsetof(SharedState,walk_x)==3928,"walk target ABI");
 _Static_assert(offsetof(SharedState,walk_phase)==3960,"walk phase ABI");
-_Static_assert(sizeof(SharedState)==3968,"v5 state size");
+_Static_assert(offsetof(SharedState,walk_keys_enabled)==3964,"walk keys ABI");
+_Static_assert(sizeof(SharedState)==3968,"v6 state size");

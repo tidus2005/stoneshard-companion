@@ -43,7 +43,7 @@ static RV* fake_draw(void* self,void* other,RV* out,int count,RV** args){
 #include "../Bridge/highlight.h"
 #include "../Bridge/walk.h"
 static void check(bool ok,const char* name){if(!ok){fprintf(stderr,"FAIL %s\n",name);exit(1);}printf("PASS %s\n",name);passed++;}
-static void reset(void){memset(shared,0,sizeof(*shared));shared->scene_ready=1;shared->scene_generation=2;shared->window_generation=1;shared->map_w=shared->map_h=2340;shared->player_x=px=500;shared->player_y=py=500;idle=valid=can_act=true;enemy=damage=injury=false;player_id=100;path=-1;move_calls=stop_calls=0;test_now=10000;walk_dispatch_pending=test_modifiers_down=false;}
+static void reset(void){memset(shared,0,sizeof(*shared));shared->ready=shared->scene_ready=1;shared->scene_generation=2;shared->window_generation=1;shared->map_w=shared->map_h=2340;shared->player_x=px=500;shared->player_y=py=500;idle=valid=can_act=true;enemy=damage=injury=false;player_id=100;path=-1;move_calls=stop_calls=0;test_now=10000;walk_dispatch_pending=test_modifiers_down=false;}
 static int begin(int d){int result=start_walk(d);test_now+=200;reconcile_walk(0);return result;}
 int main(void){
     original_label_renderer=fake_draw;
@@ -60,7 +60,7 @@ int main(void){
     input=numeric(1);query_labels_at(0x3992a2f,NULL,NULL,&out,2,args);check(out.real==1,"native Alt display remains available when disabled");
     double x,y;
     for(int d=1;d<=4;d++){check(walk_target(d,2340,2340,false,&x,&y)&&x>=39&&x<=2301&&y>=39&&y<=2301,"edge destination is inside valid tile centers");}
-    check(!walk_target(0,2340,2340,false,&x,&y)&&!walk_target(6,2340,2340,false,&x,&y)&&!walk_target(1,NAN,2340,false,&x,&y)&&!walk_target(1,52,52,false,&x,&y),"invalid direction and maps fail closed");
+    check(!walk_target(0,2340,2340,false,&x,&y)&&!walk_target(10,2340,2340,false,&x,&y)&&!walk_target(1,NAN,2340,false,&x,&y)&&!walk_target(1,52,52,false,&x,&y),"invalid direction and maps fail closed");
     reset();test_modifiers_down=true;check(start_walk(1)==0&&move_calls==0,"hotkey waits for modifier release");
     test_now+=300;reconcile_walk(0);check(move_calls==0,"held modifiers never dispatch movement");
     test_modifiers_down=false;reconcile_walk(0);check(move_calls==1,"released hotkey dispatches exactly once");
@@ -109,5 +109,63 @@ int main(void){
     check(shared->walk_state==WALK_BACKGROUND&&move_calls==1,"background between phases cancels crossing");
     reset();begin(1);px=sent_x;py=sent_y;reconcile_walk(0);player_id++;test_now+=200;reconcile_walk(0);
     check(shared->walk_state==WALK_SCENE&&move_calls==1&&stop_calls==0,"changed character never receives pending exit click");
+    for(int d=6;d<=9;d++){
+        reset();begin(d);
+        check(move_calls==1&&sent_x==((d==6||d==8)?39:2301)&&sent_y==(d<=7?39:2301),"diagonal uses correct inner corner tile");
+        px=sent_x;py=sent_y;reconcile_walk(0);test_now+=5000;reconcile_walk(0);
+        check(shared->walk_state==WALK_ARRIVED&&move_calls==1&&shared->walk_phase==0,"corner arrival stops without crossing either boundary");
+    }
+    for(int d=11;d<=14;d++){
+        reset();shared->player_x=px=507;shared->player_y=py=767;begin(d);
+        double ex=d==13?39:d==14?2301:507,ey=d==11?39:d==12?2301:767;
+        check(move_calls==1&&sent_x==ex&&sent_y==ey,"relative arrow route preserves character row or column");
+        px=sent_x;py=sent_y;reconcile_walk(0);test_now+=5000;reconcile_walk(0);
+        check(shared->walk_state==WALK_ARRIVED&&move_calls==1,"relative arrival does not cross map or restart");
+    }
+    reset();shared->map_w=2600;shared->map_h=1560;begin(9);
+    check(sent_x==2561&&sent_y==1521,"rectangular maps use independent dimensions");
+    reset();shared->player_x=NAN;check(start_walk(11)==4&&move_calls==0,"unknown character coordinate refuses relative route");
+    reset();shared->player_x=13;check(start_walk(11)==4&&move_calls==0,"relative origin on transition column fails closed");
+    reset();shared->player_x=507;shared->player_y=39;begin(11);
+    check(shared->walk_state==WALK_ARRIVED&&move_calls==0,"already at relative boundary does not move or cross");
+    reset();check(!handle_walk_key(VK_UP,false,false,true,true)&&move_calls==0,"disabled arrow mode delegates native key");
+    for(int cause=0;cause<7;cause++){
+        reset();set_walk_keys(true);
+        if(cause==3)shared->scene_ready=0;if(cause==4)shared->ui_flags=1;if(cause==5)shared->ready=0;
+        check(!handle_walk_key(cause==6?'A':VK_UP,false,cause==0,cause!=1,cause!=2)&&shared->walk_state!=WALK_ACTIVE,"modified background expired loading panel disconnected or non-arrow input passes through");
+    }
+    for(int flag=1;flag<=32;flag*=2){
+        reset();set_walk_keys(true);shared->ui_flags=flag;
+        check(handle_walk_key(VK_UP,false,false,true,true)==(flag==8),"only hover panel permits arrow automation");
+    }
+    unsigned keys[]={VK_UP,VK_DOWN,VK_LEFT,VK_RIGHT};
+    for(int i=0;i<4;i++){
+        reset();set_walk_keys(true);shared->player_x=px=507;shared->player_y=py=767;
+        check(handle_walk_key(keys[i],false,false,true,true)&&shared->walk_direction==i+11&&move_calls==0,"each game arrow queues correct relative direction");
+        test_now+=200;reconcile_walk(0);
+        for(int j=0;j<20;j++)handle_walk_key(keys[i],true,false,true,true);
+        check(move_calls==1&&stop_calls==0&&shared->walk_state==WALK_ACTIVE,"held arrow cannot issue repeated paths or cancel active route");
+        handle_walk_key(keys[i],false,false,true,true);
+        check(shared->walk_state==WALK_MANUAL&&stop_calls==1&&move_calls==1,"second physical arrow press stops current route exactly once");
+        for(int j=0;j<20;j++)handle_walk_key(keys[i],true,false,true,true);
+        check(shared->walk_state==WALK_MANUAL&&move_calls==1,"held key after cancellation never resumes path");
+    }
+    for(int cause=0;cause<3;cause++){
+        reset();set_walk_keys(true);enemy=cause==0;damage=cause==1;injury=cause==2;
+        check(handle_walk_key(VK_RIGHT,false,false,true,true)&&shared->walk_state==WALK_THREAT&&move_calls==0,"unsafe arrow consumed without native movement or attack");
+        enemy=damage=injury=false;handle_walk_key(VK_RIGHT,true,false,true,true);test_now+=300;reconcile_walk(0);
+        check(move_calls==0,"threat clearing while arrow held does not restart");
+    }
+    reset();set_walk_keys(true);handle_walk_key(VK_LEFT,false,false,true,true);set_walk_keys(false);test_now+=300;reconcile_walk(0);
+    check(!shared->walk_keys_enabled&&move_calls==0,"disable before dispatch cancels pending keyboard route");
+    reset();set_walk_keys(true);begin(13);set_walk_keys(false);
+    check(!shared->walk_keys_enabled&&shared->walk_state==WALK_MANUAL&&stop_calls==1,"disable stops already dispatched keyboard path");
+    reset();set_walk_keys(true);begin(6);set_walk_keys(false);
+    check(shared->walk_state==WALK_ACTIVE&&stop_calls==0,"disabling keyboard mode does not cancel independent grid route");
+    reset();set_walk_keys(true);begin(11);shared->scene_generation++;reconcile_walk(0);
+    handle_walk_key(VK_UP,true,false,true,true);test_now+=300;reconcile_walk(0);
+    check(shared->walk_keys_enabled&&shared->walk_state==WALK_SCENE&&move_calls==1&&stop_calls==0,"map change retains mode but held key never restarts in new scene");
+    reset();set_walk_keys(true);begin(11);idle=false;enemy=true;reconcile_walk(0);
+    check(shared->walk_state==WALK_THREAT&&stop_calls==1&&move_calls==1,"relative journey stops when a new enemy appears");
     printf("%d native interaction checks passed. No game accessed.\n",passed);return 0;
 }

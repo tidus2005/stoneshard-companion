@@ -43,8 +43,11 @@ internal static class OfflineChecks
         BitConverter.GetBytes(64u).CopyTo(packet,68);BitConverter.GetBytes(1u).CopyTo(packet,3916);
         BitConverter.GetBytes(4).CopyTo(packet,3920);BitConverter.GetBytes(2327d).CopyTo(packet,3928);BitConverter.GetBytes(1183d).CopyTo(packet,3936);
         BitConverter.GetBytes(12345ul).CopyTo(packet,3952);BitConverter.GetBytes(1u).CopyTo(packet,3960);
+        BitConverter.GetBytes(1u).CopyTo(packet,3964);
         var decoded=EngineBridge.DecodeSnapshot(packet);
-        Check(decoded.Ready&&decoded.Fresh&&decoded.SceneReady&&decoded.Capabilities==64&&decoded.WalkDirection==4&&decoded.WalkPhase==1&&decoded.WalkX==2327&&decoded.WalkY==1183&&decoded.LabelDrawOverrides==12345,"v5 snapshot decodes appended exit phase and preserves existing tail fields");
+        Check(decoded.Ready&&decoded.Fresh&&decoded.SceneReady&&decoded.Capabilities==64&&decoded.WalkDirection==4&&decoded.WalkPhase==1&&decoded.WalkKeysEnabled&&decoded.WalkX==2327&&decoded.WalkY==1183&&decoded.LabelDrawOverrides==12345,"v6 snapshot decodes keyboard mode and preserves existing tail fields");
+        Check((decoded with{WalkState=2,WalkDirection=6}).WalkStatus=="已到达左上角"&&(decoded with{WalkState=2,WalkDirection=11}).WalkStatus=="已到达人物正上方边缘","corner and relative arrival show their real destination");
+        Check((decoded with{WalkPhase=0,WalkDirection=14}).WalkStatus.Contains("人物正右方边缘")&&(decoded with{WalkPhase=1}).WalkStatus.Contains("相邻地图"),"keyboard and crossing routes have distinct progress");
         await Fails(()=>Task.Run(()=>EngineBridge.DecodeSnapshot(new byte[3960])),"数据不完整");
         var p=new SupplyPolicy();var s=new SupplyObservation(10000,1,true,true,true,true,65,5,0,2,true);
         Check(p.Evaluate(s,true,false,25)==SupplyAction.None,"scene entry grace period");s=s with{Now=13000};

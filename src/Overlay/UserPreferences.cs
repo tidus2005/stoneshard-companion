@@ -13,6 +13,7 @@ public sealed class UserPreferences
     public bool ShowLabels { get; set; }
     public bool AutoDrink {get;set;}
     public bool AutoTorch {get;set;}
+    public bool AutoWalkKeys {get;set;}
     public double DrinkThreshold {get;set;}=25;
     public bool HasHudPlacement {get;set;}
     public double HudX {get;set;}=16;
