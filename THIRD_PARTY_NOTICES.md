@@ -28,11 +28,10 @@ separately. A self-contained .NET application embeds its runtime distribution;
 see the [.NET runtime license and notices](https://github.com/dotnet/runtime)
 and [Zig license](https://github.com/ziglang/zig/blob/master/LICENSE).
 
-## Bundled PowerShell portable runtime
+## PowerShell in historical packages
 
-The Windows portable release includes the unmodified official PowerShell 7.6.5
-win-x64 distribution from [PowerShell releases](https://github.com/PowerShell/PowerShell/releases/tag/v7.6.5).
-PowerShell is licensed under MIT. Preserve `Runtime/PowerShell/LICENSE.txt`,
-`Runtime/PowerShell/ThirdPartyNotices.txt`, and all other bundled notices.
-The pinned download and SHA256 are recorded in `scripts/portable-runtime.json`.
-It runs locally for save operations and is not installed into Windows.
+Versions 0.3.5 and 0.3.6 included the official MIT-licensed PowerShell runtime
+and its notices. Version 0.3.7 uses its embedded .NET save engine and no longer
+distributes or invokes PowerShell. The legacy PowerShell scripts remain in the
+source tree for compatibility and regression reference; they are not required
+by the portable application.

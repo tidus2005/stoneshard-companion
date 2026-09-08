@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**0.3.6 · Windows x64 · 非官方游戏增强工具**
+**0.3.7 · Windows x64 · 非官方游戏增强工具**
 
 An open-source Windows companion for Stoneshard, featuring a movable overlay,
 engine speed controls, persistent item labels, compass navigation, and save backups.
@@ -11,13 +11,13 @@ Windows 单面板游戏增强工具，适配 Steam 原版 **Stoneshard 0.9.4.25 
 
 ## 直接下载运行（Windows 11 x64）
 
-**[下载最新免安装 ZIP](https://github.com/tidus2005/stoneshard-companion/releases/latest/download/StoneshardCompanion-0.3.6-win-x64.zip)** · [全部 Releases](https://github.com/tidus2005/stoneshard-companion/releases)
+**[下载最新免安装 ZIP](https://github.com/tidus2005/stoneshard-companion/releases/latest/download/StoneshardCompanion-0.3.7-win-x64.zip)** · [全部 Releases](https://github.com/tidus2005/stoneshard-companion/releases)
 
-1. 下载 `StoneshardCompanion-0.3.6-win-x64.zip`，完整解压到任意普通文件夹。
+1. 下载 `StoneshardCompanion-0.3.7-win-x64.zip`，完整解压到任意普通文件夹。
 2. 双击解压后的 `Start.cmd` 或 `StoneshardCompanion.exe`。
 3. 打开上述适配版本的游戏，使用窗口或无边框全屏。
 
-适用于 Intel / AMD 的 Windows 11 x64（不是 Windows ARM64 原生包）。**随包包含 .NET 和 PowerShell，存档备份/还原也无需另装依赖**。保留 EXE、DLL、Assets 和 Runtime 文件夹；不要只复制 EXE，也不要在 ZIP 内直接启动。首次启动会解开 .NET 自带组件。升级时先正常退出旧助手和游戏，再运行新版。工具包不含游戏、个人存档或本机设置。
+适用于 Intel / AMD 的 Windows 11 x64（不是 Windows ARM64 原生包）。**随包包含 .NET，存档备份/还原不再依赖 PowerShell**。保留 EXE、DLL 和 Assets 文件夹；不要只复制 EXE，也不要在 ZIP 内直接启动。首次启动会解开 .NET 自带组件。从 0.3.6 升级时退出旧助手再运行新版即可；更早版本若提示旧组件，需正常重启游戏。工具包不含游戏、个人存档或本机设置。
 
 源码下载仅供开发，需按下方步骤构建。GitHub 自动生成的 `Source code` 压缩包不是可运行成品。
 
@@ -27,13 +27,14 @@ Windows 单面板游戏增强工具，适配 Steam 原版 **Stoneshard 0.9.4.25 
 - 方向键自动移动：面板顶部开关默认关闭，开启后轻按普通方向键，沿人物当前行或列寻路到边缘后停下；贴近出口后再按同方向直接切图，途中再次按键停步，长按不重复，仅在游戏前台生效。
 - 面板常驻：只在打开状态栏或物品栏时临时隐藏；主菜单、保存退出及游戏关闭后仍可一键备份。
 - 补给：一键喝水、切换火把，可选按口渴阈值自动喝水、保持火把点亮并使用备用火把。
-- 存档：一键完整备份、刷新最新副本、历史列表、选择还原和进度提示；兼容现有存档助手备份。
+- 存档：一键完整备份、刷新最新副本、历史列表、选择还原、备份目录选择和进度提示；兼容现有存档助手备份。
 - 速度按钮直接循环：正常 1× → 加速 2× → 急速 3×，以三个图标区分，不弹出下拉菜单；保留切图记忆和原有倍率快捷键。
 - 面甲开合、镜头居中，以及饥饿、口渴、疼痛、迷醉四项角色状态。
 
-0.3.6 改为三档图标循环变速，并增加边缘再次按同方向点击出口。沿用 0.3.5 完整便携运行组件；包内存档组件及解压文件经过离线检查，未在另一台电脑或游戏内实测。九宫格角点、普通方向键模式，以及此前的自动跨图、中心行走和常驻面板尚未实机验证。旧版已验证项目和未覆盖项见历史报告；自动火把点亮及耗尽换备用仍未实机验证。
+0.3.7 将存档引擎改为自带 .NET，无需 PowerShell 或系统模块；新增可记忆的备份目录选择，兼容旧 ZIP 备份，减少不同 Windows / 虚拟机环境的差异。已对实际便携程序执行备份、还原及异常检查，未在用户的 Mac 虚拟机或游戏内实测。九宫格角点、普通方向键模式，以及此前的自动跨图、中心行走和常驻面板尚未实机验证。旧版已验证项目和未覆盖项见历史报告；自动火把点亮及耗尽换备用仍未实机验证。
 
 - [使用说明](docs/使用说明.md)
+- [0.3.7 存档兼容性修复](docs/0.3.7存档兼容性修复.md)
 - [0.3.6 改动与离线验证](docs/0.3.6改动与离线验证.md)
 - [0.3.5 便携发行与验证](docs/0.3.5便携发行与验证.md)
 - [0.3.4 实现与离线验证](docs/0.3.4实现与离线验证.md)
@@ -57,7 +58,7 @@ git clone https://github.com/tidus2005/stoneshard-companion.git
 cd stoneshard-companion
 pwsh -File scripts/test-offline.ps1
 pwsh -File scripts/build.ps1 -Publish
-pwsh -File scripts/test-portable.ps1 -ZipPath artifacts/release/StoneshardCompanion-0.3.6-win-x64.zip
+pwsh -File scripts/test-portable.ps1 -ZipPath artifacts/release/StoneshardCompanion-0.3.7-win-x64.zip
 ```
 
 离线检查不访问游戏内存、不发送输入、不打开窗口，存档检查只写独立临时目录。发布生成版本目录、完整文件 SHA256 清单及 ZIP。

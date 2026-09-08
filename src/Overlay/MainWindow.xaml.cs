@@ -17,7 +17,7 @@ public partial class MainWindow : Window
     public string Status {get;private set;}="等待游戏启动";
     private readonly HudWindow hud;
     private readonly SupplyPolicy supply=new();
-    public SaveManagerService Saves {get;}=new(Path.Combine(AppContext.BaseDirectory,"Assets","SaveManager","Invoke.ps1"));
+    public SaveManagerService Saves {get;private set;}=null!;
     public string SaveStatus {get;private set;}="备份保存已落盘的进度";
     public string SupplyStatus=>supply.Status;
     private SaveWindow? savesWindow;
@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<int,(uint Key,Action Action)> shortcuts=[];
     public MainWindow()
     {
+        Saves=new(backupRoot:Preferences.BackupFolder);
         InitializeComponent();hud=new(this);
         tray=new Forms.NotifyIcon{Text="晶石助手 · 行旅辅助",Icon=System.Drawing.SystemIcons.Application,Visible=true};
         var menu=new Forms.ContextMenuStrip();
@@ -204,6 +205,19 @@ public partial class MainWindow : Window
     }
     public void ToggleFold(){folded=!folded;if(folded)HideHud();}
     public void SavePreferences(){try{Preferences.Save();}catch(Exception e){ShowError("设置保存失败："+e.Message);}}
+    public void ChangeBackupFolder(string folder)
+    {
+        if(Saves.Busy)throw new InvalidOperationException("请等待存档操作完成。");
+        var selected=new SaveManagerService(backupRoot:folder);
+        // Validate separation before writing even a small writeability probe.
+        _=new SaveEngine(selected.SaveRoot,selected.BackupRoot);
+        Directory.CreateDirectory(selected.BackupRoot);
+        string probe=Path.Combine(selected.BackupRoot,".write-check-"+Guid.NewGuid().ToString("N"));
+        using(var file=new FileStream(probe,FileMode.CreateNew,FileAccess.ReadWrite,FileShare.None,4096,FileOptions.DeleteOnClose)){file.WriteByte(0);file.Flush(true);}
+        string? previous=Preferences.BackupFolder;Preferences.BackupFolder=selected.BackupRoot;
+        try{Preferences.Save();}catch{Preferences.BackupFolder=previous;throw;}
+        Saves=selected;SaveStatus="备份目录已切换；原目录中的历史备份仍保留在原处。";
+    }
     public void OpenSettings()
     {
         if(settings is null){settings=new SettingsWindow(this);settings.Closed+=(_,_)=>settings=null;settings.Show();}else settings.Activate();

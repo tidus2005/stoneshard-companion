@@ -1,7 +1,9 @@
 using StoneshardCompanion;
 using System.Text.Json;
 
+Console.OutputEncoding=new System.Text.UTF8Encoding(false);
 try{
+    if(args.Length>0&&args[0]=="--save-worker"){Environment.ExitCode=SaveWorker.Run(args);return;}
     if(args.Length>0&&args[0]=="OfflineTest"){await OfflineChecks.Run(Path.GetFullPath(args.Length>1?args[1]:"."),args.Length>2?Path.GetFullPath(args[2]):null);return;}
     if(args.Length>0&&args[0]=="SelfTest"){IntentChecks.Run();return;}
     if(args.Length>1&&args[0]=="Ui"){

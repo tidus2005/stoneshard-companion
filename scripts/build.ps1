@@ -19,7 +19,6 @@ try {
         $releaseFolder = Join-Path $projectRoot "artifacts\release\StoneshardCompanion-$version"
         dotnet publish src\Overlay\StoneshardCompanion.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o $releaseFolder --nologo
         if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
-        & "$PSScriptRoot\package-portable-runtime.ps1" -ReleaseFolder $releaseFolder
         [IO.File]::WriteAllText((Join-Path $releaseFolder 'Start.cmd'), "@echo off`r`nstart `"`" `"%~dp0StoneshardCompanion.exe`"`r`n", [Text.Encoding]::ASCII)
         Copy-Item -LiteralPath 'docs\使用说明.md' -Destination (Join-Path $releaseFolder '使用说明.md')
         foreach ($notice in @('LICENSE', 'THIRD_PARTY_NOTICES.md')) {

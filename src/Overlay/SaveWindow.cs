@@ -11,6 +11,7 @@ public sealed class SaveWindow : Window
     private readonly ListBox history=new(){Height=250,Background=new SolidColorBrush(Color.FromRgb(30,28,37)),Foreground=Brushes.Wheat,DisplayMemberPath="Display"};
     private readonly TextBlock status=new(){TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,8,0,8)};
     private readonly TextBlock latest=new(){TextWrapping=TextWrapping.Wrap,Foreground=Brushes.Silver};
+    private readonly TextBox locations=new(){IsReadOnly=true,TextWrapping=TextWrapping.Wrap,Background=Brushes.Transparent,Foreground=Brushes.Silver,BorderThickness=new Thickness(0),Margin=new Thickness(0,6,0,0)};
     private readonly ProgressBar progress=new(){Height=5,Margin=new Thickness(0,8,0,8),Visibility=Visibility.Collapsed};
     private readonly StackPanel confirmation=new(){Visibility=Visibility.Collapsed};
     private readonly TextBlock confirmText=new(){TextWrapping=TextWrapping.Wrap,Foreground=Brushes.Wheat,Margin=new Thickness(0,10,0,8)};
@@ -27,9 +28,16 @@ public sealed class SaveWindow : Window
         for(int i=0;i<6;i++)body.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
         var header=new StackPanel();header.Children.Add(new TextBlock{Text="存档备份",FontSize=24});
         header.Children.Add(new TextBlock{Text="备份已保存到磁盘的全部角色与设置；不会保存尚未落盘的游戏进度。",TextWrapping=TextWrapping.Wrap,Foreground=Brushes.Silver,Margin=new Thickness(0,8,0,10)});header.Children.Add(latest);body.Children.Add(header);
+        header.Children.Add(locations);
         var buttons=new WrapPanel{Margin=new Thickness(0,12,0,4)};Grid.SetRow(buttons,1);body.Children.Add(buttons);
         Add(buttons,"一键完整备份",()=>owner.Backup(false));Add(buttons,"刷新最新备份",()=>owner.Backup(true));Add(buttons,"刷新列表",Refresh);
         Add(buttons,"打开备份目录",()=>{try{System.IO.Directory.CreateDirectory(owner.Saves.BackupRoot);Process.Start(new ProcessStartInfo(owner.Saves.BackupRoot){UseShellExecute=true});}catch(Exception e){status.Text=e.Message;}});
+        Add(buttons,"选择备份目录",()=>{
+            var picker=new Microsoft.Win32.OpenFolderDialog{Title="选择备份目录（原有备份保留在原目录）",Multiselect=false};
+            if(picker.ShowDialog(this)!=true)return;
+            try{coordinator.ChangeBackupFolder(picker.FolderName);pending=null;confirmation.Visibility=Visibility.Collapsed;inMenu.IsChecked=false;Refresh();}
+            catch(Exception e){status.Text="备份目录未切换："+e.Message;}
+        });
         var state=new StackPanel();state.Children.Add(status);state.Children.Add(progress);Grid.SetRow(state,2);body.Children.Add(state);
         Grid.SetRow(history,3);body.Children.Add(history);
         var restoreRow=new WrapPanel{Margin=new Thickness(0,8,0,0)};Grid.SetRow(restoreRow,4);body.Children.Add(restoreRow);
@@ -57,6 +65,7 @@ public sealed class SaveWindow : Window
     public void Refresh()
     {
         bool busy=coordinator.Saves.Busy;status.Text=coordinator.SaveStatus;progress.Visibility=busy?Visibility.Visible:Visibility.Collapsed;progress.IsIndeterminate=busy;
+        locations.Text=$"存档：{coordinator.Saves.SaveRoot}\n备份：{coordinator.Saves.BackupRoot}";
         foreach(var button in operations)button.IsEnabled=!busy;confirm.IsEnabled=!busy&&pending is not null&&inMenu.IsChecked==true;history.IsEnabled=!busy;
         try{
             string? selected=(history.SelectedItem as SaveArchive)?.Path;var items=coordinator.Saves.List();history.ItemsSource=items;

@@ -3,10 +3,10 @@
     <OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms><ImplicitUsings>disable</ImplicitUsings><Nullable>enable</Nullable>
     <PlatformTarget>x64</PlatformTarget><ApplicationManifest>app.manifest</ApplicationManifest>
-    <AssemblyName>StoneshardCompanion</AssemblyName><Version>0.3.6</Version>
+    <AssemblyName>StoneshardCompanion</AssemblyName><Version>0.3.7</Version>
+    <StartupObject>StoneshardCompanion.EntryPoint</StartupObject>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../Core/StoneshardCompanion.Core.csproj"/></ItemGroup>
   <ItemGroup><Resource Include="Assets/Icons/*.svg"/><None Include="Assets/Icons/ATTRIBUTION.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/></ItemGroup>
-  <ItemGroup><None Update="Assets/SaveManager/*.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true"/></ItemGroup>
   <ItemGroup><None Include="../../artifacts/native/StoneshardBridge.dll" Link="StoneshardBridge.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true"/></ItemGroup>
 </Project>

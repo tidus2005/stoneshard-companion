@@ -77,6 +77,7 @@ internal static class OfflineChecks
         p.ManualAction(20000);Check(p.Evaluate(s with{Now=22000},false,true,25)==SupplyAction.None,"manual action delays automation");
         Check(p.Evaluate(s with{Now=24000},false,true,25)==SupplyAction.TorchOn,"exhausted torch can use spare after cooldown");
         await SaveChecks(root,saveRunner);
+        await SaveCompatibilityChecks.Run(saveRunner);
         Console.WriteLine($"{passed} v0.3 offline checks passed (plus prior speed-intent checks). No game/UI access.");
     }
     private static string Hash(string path)=>Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
@@ -88,7 +89,7 @@ internal static class OfflineChecks
             string saves=Path.Combine(temp,"local","StoneShard"),backups=Path.Combine(temp,"backups"),data=Path.Combine(saves,"characters_v1","character_3","exitsave_1","data.sav");
             Directory.CreateDirectory(Path.GetDirectoryName(data)!);File.WriteAllText(data,"ALIVE_01");File.WriteAllText(Path.Combine(saves,"characters_v1","characters.map"),"CHARACTER_3");File.WriteAllText(Path.Combine(saves,"settings.ini"),"settings");
             string hidden=Path.Combine(saves,"hidden.sav");File.WriteAllText(hidden,"hidden");File.SetAttributes(hidden,FileAttributes.Hidden);
-            var service=new SaveManagerService(saveRunner??Path.Combine(root,"src","Overlay","Assets","SaveManager","Invoke.ps1"),saves,backups);
+            var service=new SaveManagerService(saveRunner,saves,backups);
             var original=Directory.EnumerateFiles(saves,"*",SearchOption.AllDirectories).ToDictionary(p=>Path.GetRelativePath(saves,p),Hash);
             var first=await service.RunAsync(SaveOperation.Backup);string firstHash=Hash(first.Archive);
             Check(first.Files==4&&first.Hash==firstHash&&File.Exists(first.Archive+".sha256"),"GUI service creates complete verified archive including hidden files");

@@ -14,6 +14,7 @@ public sealed class UserPreferences
     public bool AutoDrink {get;set;}
     public bool AutoTorch {get;set;}
     public bool AutoWalkKeys {get;set;}
+    public string? BackupFolder {get;set;}
     public double DrinkThreshold {get;set;}=25;
     public bool HasHudPlacement {get;set;}
     public double HudX {get;set;}=16;
@@ -29,6 +30,7 @@ public sealed class UserPreferences
             p.LastSpeed=Math.Clamp(p.LastSpeed,1,4);p.Scale=Math.Clamp(p.Scale,.75,1.35);p.BottomOffset=Math.Clamp(p.BottomOffset,-60,180);
             p.DrinkThreshold=double.IsFinite(p.DrinkThreshold)?Math.Clamp(p.DrinkThreshold,10,80):25;
             if(!double.IsFinite(p.HudX)||!double.IsFinite(p.HudY)||!double.IsFinite(p.HudWidth)||!double.IsFinite(p.HudHeight))p.HasHudPlacement=false;
+            if(p.BackupFolder is not null){try{p.BackupFolder=Path.IsPathFullyQualified(p.BackupFolder)?Path.GetFullPath(p.BackupFolder):null;}catch(ArgumentException){p.BackupFolder=null;}}
             return p;
         } catch(IOException){return new();} catch(JsonException){return new();}
     }
