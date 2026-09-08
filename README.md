@@ -60,6 +60,8 @@ pwsh -File scripts/test-portable.ps1 -ZipPath artifacts/release/StoneshardCompan
 
 离线检查不访问游戏内存、不发送输入、不打开窗口，存档检查只写独立临时目录。发布生成版本目录、完整文件 SHA256 清单及 ZIP。
 
+维护者也可在 GitHub Actions 手动运行 **Build Windows portable release**：Windows 构建机先完成离线和便携检查，再上传 ZIP 与校验文件并发布。版本读取项目文件，说明读取 `docs/releases/v<版本>.md`；已公开的版本不会覆盖。
+
 `src/Overlay` 为 WPF 界面；`src/Core` 管理连接、策略、布局和存档服务；`native/Bridge` 为游戏主线程适配层；`native/Tests` 模拟原生调用；`src/Probe` 包含诊断和离线检查；`tests` 包含原存档核心回归。**Probe 除 SelfTest/OfflineTest 外的命令会接触游戏，不属于离线检查。**
 
 桥接以完整 EXE 和 data.win 哈希锁定适配版本，版本不符时拒绝连接。
