@@ -36,6 +36,7 @@ static void set_speed(double fps) {
     ((Builtin)(game+0x51ec720))(&out,NULL,NULL,2,args);
 }
 #include "highlight.h"
+#include "walk_native.h"
 #include "walk.h"
 static void reconcile_speed(void){
     DWORD pid=0;GetWindowThreadProcessId(GetForegroundWindow(),&pid);
@@ -207,7 +208,7 @@ __declspec(dllexport) DWORD WINAPI BridgeStart(void* ignored) {
     // Startup can expose a window before the frame manager is initialized.
     // Do not publish a mapping until a valid baseline exists; allow a later retry.
     baseline=get_speed();if(!isfinite(baseline)||baseline<1 || baseline>240)return start_failed(15);
-    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v7.%lu",GetCurrentProcessId());
+    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v8.%lu",GetCurrentProcessId());
     mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,NULL,PAGE_READWRITE,0,4096,name);
     if(!mapping)return start_failed(12);
     if(GetLastError()==ERROR_ALREADY_EXISTS)return start_failed(13);

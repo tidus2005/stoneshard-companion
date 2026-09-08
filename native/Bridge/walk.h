@@ -6,6 +6,21 @@ enum { WALK_NONE=0,WALK_ACTIVE=1,WALK_ARRIVED=2,WALK_MANUAL=3,WALK_THREAT=4,
 static uint64_t walk_scene,walk_window,walk_started,walk_progress;
 static double walk_player_id,walk_last_x,walk_last_y;
 static bool walk_dispatch_pending;
+static bool walk_exit_activated;
+typedef struct WalkCandidate {int dx,dy,distance;double from_player;} WalkCandidate;
+static WalkCandidate walk_centers[289];
+static int walk_center_count,walk_center_cursor;
+static void prepare_center(double x,double y){
+    walk_center_count=walk_center_cursor=0;
+    for(int dx=-8;dx<=8;dx++)for(int dy=-8;dy<=8;dy++){
+        double tx=x+dx*26,ty=y+dy*26;
+        if(tx<39||ty<39||tx>floor(shared->map_w/26)*26-39||ty>floor(shared->map_h/26)*26-39)continue;
+        WalkCandidate c={dx,dy,dx*dx+dy*dy,(tx-shared->player_x)*(tx-shared->player_x)+(ty-shared->player_y)*(ty-shared->player_y)};
+        int at=walk_center_count++;
+        while(at>0&&(walk_centers[at-1].distance>c.distance||(walk_centers[at-1].distance==c.distance&&walk_centers[at-1].from_player>c.from_player))){walk_centers[at]=walk_centers[at-1];at--;}
+        walk_centers[at]=c;
+    }
+}
 static bool walk_crosses_map(int direction){return direction>=1&&direction<=4;}
 static bool walk_modifiers_down(void){
 #ifdef COMPANION_NATIVE_TEST
@@ -46,6 +61,9 @@ static int walk_cardinal(int direction){return direction>=11&&direction<=14?dire
 static bool walk_exit_target(int direction,double* x,double* y){
     int d=walk_cardinal(direction);double px=shared->player_x,py=shared->player_y;
     if(!d||!walk_target(d,shared->map_w,shared->map_h,true,x,y)||!isfinite(px)||!isfinite(py))return false;
+    // Only consider a nearby real exit once the character reached the inner
+    // boundary (or the actual transition cell lies inward of that assumption).
+    if(native_exit_target(direction,px,py,x,y)&&fabs(*x-px)<28&&fabs(*y-py)<28)return true;
     int cols=(int)floor(shared->map_w/26),rows=(int)floor(shared->map_h/26);
     if(px<0||py<0||px>=cols*26||py>=rows*26)return false;
     int col=(int)floor(px/26),row=(int)floor(py/26);
@@ -74,6 +92,8 @@ static int start_walk(int direction){
     RV player=find_instance("o_player");
     if(!valid_object(player)||!supply_safe(player)){release_value(&player);return 7;}
     shared->walk_direction=direction;shared->walk_x=x;shared->walk_y=y;shared->walk_phase=exit?1:0;
+    walk_exit_activated=false;
+    if(direction==5)prepare_center(x,y);
     if(!exit&&fabs(shared->player_x-x)<2&&fabs(shared->player_y-y)<2){
         if(!walk_crosses_map(direction)){shared->walk_state=WALK_ARRIVED;release_value(&player);return 0;}
         walk_target(direction,shared->map_w,shared->map_h,true,&shared->walk_x,&shared->walk_y);shared->walk_phase=1;
@@ -91,8 +111,10 @@ static int request_walk(int direction){
         if(walk_cardinal(direction)!=0&&walk_cardinal(direction)==walk_cardinal(shared->walk_direction)&&shared->walk_phase==0&&!walk_dispatch_pending&&
            shared->scene_ready&&walk_scene==shared->scene_generation&&walk_window==shared->window_generation){
             RV player=find_instance("o_player");
+            double exit_x,exit_y,px=member_number(player,"x"),py=member_number(player,"y");
             arrived=valid_object(player)&&member_number(player,"id")==walk_player_id&&supply_safe(player)&&
-                fabs(member_number(player,"x")-shared->walk_x)<2&&fabs(member_number(player,"y")-shared->walk_y)<2;
+                ((fabs(px-shared->walk_x)<2&&fabs(py-shared->walk_y)<2)||
+                 (native_exit_target(direction,px,py,&exit_x,&exit_y)&&fabs(exit_x-px)<28&&fabs(exit_y-py)<28));
             release_value(&player);
         }
         // Handle the short gap between native arrival and the next timer sample.
@@ -111,9 +133,27 @@ static void reconcile_walk(uint32_t reasons){
     if(walk_threat(player)){release_value(&player);finish_walk(WALK_THREAT,true);return;}
     if(walk_dispatch_pending){
         uint64_t elapsed=GetTickCount64()-walk_started;
-        if(elapsed>2000){release_value(&player);finish_walk(WALK_TIMEOUT,false);return;}
+        if(elapsed>(shared->walk_direction==5?8000:2000)){release_value(&player);finish_walk(WALK_TIMEOUT,false);return;}
         if(elapsed<150||walk_modifiers_down()){release_value(&player);return;}
         if(!supply_safe(player)){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}
+        if(shared->walk_direction==5){
+            double cx,cy;walk_target(5,shared->map_w,shared->map_h,false,&cx,&cy);
+            bool found=false;uint64_t scan_start=GetTickCount64();
+            for(int budget=0;budget<8&&walk_center_cursor<walk_center_count;budget++){
+                WalkCandidate c=walk_centers[walk_center_cursor++];double tx=cx+c.dx*26,ty=cy+c.dy*26;
+                bool here=fabs(member_number(player,"x")-tx)<2&&fabs(member_number(player,"y")-ty)<2;
+                if(here||native_center_reachable(player,tx,ty)){shared->walk_x=tx;shared->walk_y=ty;found=true;break;}
+                if(GetTickCount64()-scan_start>=5)break;
+            }
+            if(!found){release_value(&player);if(walk_center_cursor==walk_center_count)finish_walk(WALK_BLOCKED,false);return;}
+            if(fabs(member_number(player,"x")-shared->walk_x)<2&&fabs(member_number(player,"y")-shared->walk_y)<2){release_value(&player);finish_walk(WALK_ARRIVED,false);return;}
+        }
+        if(shared->walk_phase==1){
+            double tx,ty,px=member_number(player,"x"),py=member_number(player,"y");
+            if(!native_exit_target(shared->walk_direction,px,py,&tx,&ty)){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}
+            shared->walk_x=tx;shared->walk_y=ty;
+            if(fabs(px-tx)<2&&fabs(py-ty)<2){native_activate_exit(player);walk_exit_activated=true;release_value(&player);walk_dispatch_pending=false;walk_progress=walk_started=GetTickCount64();return;}
+        }
         restore_camera(true);
         RV args[2]={numeric(shared->walk_x),numeric(shared->walk_y)},out=call_script(0x1805180,player,2,args);
         release_value(&out);release_value(&player);walk_dispatch_pending=false;
@@ -134,6 +174,13 @@ static void reconcile_walk(uint32_t reasons){
         }
         // Native border logic owns the transition. A missing/blocked exit is
         // not a success and never causes repeated clicks or forced room writes.
+        if(!walk_exit_activated&&safe){
+            double tx,ty;
+            if(!native_exit_target(shared->walk_direction,x,y,&tx,&ty)||fabs(x-tx)>=2||fabs(y-ty)>=2){finish_walk(WALK_BLOCKED,false);return;}
+            RV current=find_instance("o_player");
+            if(valid_object(current)&&member_number(current,"id")==walk_player_id&&supply_safe(current))native_activate_exit(current);
+            release_value(&current);walk_exit_activated=true;walk_progress=now;
+        }
         if(now-walk_progress>2000)finish_walk(WALK_BLOCKED,false);
         return;
     }

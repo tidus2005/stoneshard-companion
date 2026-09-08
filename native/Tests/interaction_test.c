@@ -40,10 +40,23 @@ static RV call_script(uintptr_t address,RV self,int count,RV* args){
 static RV* fake_draw(void* self,void* other,RV* out,int count,RV** args){
     draw_calls++;*out=count?*args[0]:numeric(-1);return out;
 }
+static bool exit_exists=true;
+static int exit_calls,center_queries;
+static double exit_inset=0,center_min_distance=0;
+static bool native_exit_target(int direction,double x,double y,double* tx,double* ty){
+    int d=direction>=11?direction-10:direction;
+    if(!exit_exists||d<1||d>4)return false;
+    *tx=floor(x/26)*26+13;*ty=floor(y/26)*26+13;
+    if(d==1)*ty=13+exit_inset*26;if(d==2)*ty=floor(shared->map_h/26)*26-13-exit_inset*26;
+    if(d==3)*tx=13+exit_inset*26;if(d==4)*tx=floor(shared->map_w/26)*26-13-exit_inset*26;
+    return fabs(*tx-x)<=52.5&&fabs(*ty-y)<=52.5;
+}
+static bool native_center_reachable(RV player,double x,double y){center_queries++;return (x-1183)*(x-1183)+(y-1183)*(y-1183)>=center_min_distance;}
+static void native_activate_exit(RV player){exit_calls++;}
 #include "../Bridge/highlight.h"
 #include "../Bridge/walk.h"
 static void check(bool ok,const char* name){if(!ok){fprintf(stderr,"FAIL %s\n",name);exit(1);}printf("PASS %s\n",name);passed++;}
-static void reset(void){memset(shared,0,sizeof(*shared));shared->ready=shared->scene_ready=1;shared->scene_generation=2;shared->window_generation=1;shared->map_w=shared->map_h=2340;shared->player_x=px=500;shared->player_y=py=500;idle=valid=can_act=true;enemy=damage=injury=false;player_id=100;path=-1;move_calls=stop_calls=0;test_now=10000;walk_dispatch_pending=test_modifiers_down=false;}
+static void reset(void){memset(shared,0,sizeof(*shared));shared->ready=shared->scene_ready=1;shared->scene_generation=2;shared->window_generation=1;shared->map_w=shared->map_h=2340;shared->player_x=px=500;shared->player_y=py=500;idle=valid=can_act=true;enemy=damage=injury=false;player_id=100;path=-1;move_calls=stop_calls=0;test_now=10000;walk_dispatch_pending=test_modifiers_down=false;exit_exists=true;exit_inset=center_min_distance=0;exit_calls=center_queries=0;}
 static int begin(int d){int result=start_walk(d);test_now+=200;reconcile_walk(0);return result;}
 int main(void){
     original_label_renderer=fake_draw;
@@ -90,7 +103,7 @@ int main(void){
     reset();begin(5);check(sent_x==1183&&sent_y==1183,"center direction requests original path to map center");
     px=sent_x;py=sent_y;idle=true;reconcile_walk(0);test_now+=5000;reconcile_walk(0);
     check(shared->walk_state==WALK_ARRIVED&&move_calls==1&&shared->walk_phase==0,"center arrival never requests an exit click");
-    reset();shared->player_x=1183;shared->player_y=39;begin(1);check(move_calls==1&&sent_y==13&&shared->walk_phase==1,"starting at inner edge proceeds directly to exit once");
+    reset();shared->player_x=px=1183;shared->player_y=py=39;begin(1);check(move_calls==1&&sent_y==13&&shared->walk_phase==1,"starting at inner edge proceeds directly to exit once");
     reset();shared->player_x=shared->player_y=1183;begin(5);check(shared->walk_state==WALK_ARRIVED&&move_calls==0,"already centered needs no movement");
     for(int cause=0;cause<6;cause++){
         reset();begin(1);px=sent_x;py=sent_y;reconcile_walk(0);
@@ -126,7 +139,7 @@ int main(void){
     check(sent_x==2561&&sent_y==1521,"rectangular maps use independent dimensions");
     reset();shared->player_x=NAN;check(start_walk(11)==4&&move_calls==0,"unknown character coordinate refuses relative route");
     reset();shared->player_x=13;check(start_walk(11)==4&&move_calls==0,"relative origin on transition column fails closed");
-    reset();shared->player_x=507;shared->player_y=39;begin(11);
+    reset();shared->player_x=px=507;shared->player_y=py=39;begin(11);
     check(shared->walk_state==WALK_ACTIVE&&shared->walk_phase==1&&move_calls==1&&sent_x==507&&sent_y==13,"fresh relative request at boundary clicks exit");
     reset();check(!handle_walk_key(VK_UP,false,false,true,true)&&move_calls==0,"disabled arrow mode delegates native key");
     for(int cause=0;cause<7;cause++){
@@ -206,8 +219,26 @@ int main(void){
     reset();shared->player_x=px=507;shared->player_y=py=65;begin(11);
     check(shared->walk_phase==0&&sent_y==39,"two tiles away still approaches edge rather than clicking exit");
     reset();shared->player_x=px=507;shared->player_y=py=13;begin(11);
-    check(shared->walk_phase==1&&move_calls==1&&sent_x==507&&sent_y==13,"already on outer tile permits one original exit click");
+    check(shared->walk_phase==1&&move_calls==0&&exit_calls==1,"already on real exit activates native transition without a zero length path");
     reset();shared->player_x=px=507;shared->player_y=py=39;begin(12);
     check(shared->walk_phase==0&&sent_y==2301,"opposite direction from border travels inward normally");
+    reset();exit_inset=1;shared->player_x=px=507;shared->player_y=py=39;set_walk_keys(true);
+    handle_walk_key(VK_UP,false,false,true,true);test_now+=200;reconcile_walk(0);
+    check(exit_calls==1&&move_calls==0&&shared->walk_y==39,"exit on inner row uses real transition instead of assumed outer row");
+    test_now+=2100;reconcile_walk(0);reconcile_walk(0);
+    check(exit_calls==1&&shared->walk_state==WALK_BLOCKED,"native transition with no scene change never repeats activation");
+    reset();exit_exists=false;shared->player_x=px=507;shared->player_y=py=39;begin(11);
+    check(move_calls==0&&exit_calls==0&&shared->walk_state==WALK_BLOCKED,"missing real exit does not click arbitrary border ground");
+    reset();center_min_distance=1;begin(5);
+    check(move_calls==1&&center_queries==2&&((sent_x-1183)*(sent_x-1183)+(sent_y-1183)*(sent_y-1183))==676,"occupied center chooses closest reachable neighbor before moving");
+    reset();center_min_distance=5*676;begin(5);
+    check(move_calls==0&&center_queries==8&&walk_dispatch_pending,"large blocked center is scanned in bounded batches without moving");
+    for(int i=0;i<40&&walk_dispatch_pending;i++){test_now+=100;reconcile_walk(0);}
+    check(move_calls==1&&((sent_x-1183)*(sent_x-1183)+(sent_y-1183)*(sent_y-1183))==5*676,"center fallback is sorted by distance, not scan order");
+    reset();center_min_distance=INFINITY;begin(5);enemy=true;test_now+=100;reconcile_walk(0);
+    check(move_calls==0&&center_queries==8&&shared->walk_state==WALK_THREAT,"enemy during center search cancels without a path or attack");
+    reset();center_min_distance=INFINITY;begin(5);
+    for(int i=0;i<40&&walk_dispatch_pending;i++){test_now+=100;reconcile_walk(0);}
+    check(move_calls==0&&center_queries==289&&shared->walk_state==WALK_BLOCKED,"fully blocked center neighborhood stops after bounded search");
     printf("%d native interaction checks passed. No game accessed.\n",passed);return 0;
 }

@@ -13,7 +13,7 @@ public sealed class SaveTransferException(string message,string localArchive,Exc
 // discovery, system installation, game process or current-directory dependency.
 public sealed class SaveEngine
 {
-    private readonly string saves,backups,staging;
+    private readonly string saves,backups,staging,backupAlias;
     public static string DefaultStagingRoot=>Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"StoneshardCompanion","BackupRecovery");
     private readonly Action<string> report;
     private sealed record Entry(string Name,long Bytes,string Hash,long Written);
@@ -24,11 +24,12 @@ public sealed class SaveEngine
     }
     public SaveEngine(string saveRoot,string backupRoot,Action<string>? progress=null,string? stagingRoot=null)
     {
-        saves=Path.TrimEndingDirectorySeparator(Path.GetFullPath(saveRoot));
-        backups=Path.TrimEndingDirectorySeparator(Path.GetFullPath(backupRoot));
-        staging=Path.TrimEndingDirectorySeparator(Path.GetFullPath(stagingRoot??DefaultStagingRoot));
+        if(!Path.GetFileName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(saveRoot))).Equals("StoneShard",StringComparison.OrdinalIgnoreCase))throw new IOException("存档目录名称必须为 StoneShard。");
+        backupAlias=Path.TrimEndingDirectorySeparator(Path.GetFullPath(backupRoot));
+        saves=SavePaths.ResolveDirectoryRoot(saveRoot);
+        backups=SavePaths.ResolveDirectoryRoot(backupRoot);
+        staging=SavePaths.ResolveDirectoryRoot(stagingRoot??DefaultStagingRoot);
         report=progress??(_=>{});
-        if(!Path.GetFileName(saves).Equals("StoneShard",StringComparison.OrdinalIgnoreCase))throw new IOException("存档目录名称必须为 StoneShard。");
         if(Within(backups,saves)||Within(saves,backups))throw new IOException("备份目录与存档目录不能互相包含。");
         if(Within(staging,saves))throw new IOException("本地备份工作目录不能位于存档目录中。");
     }
@@ -46,8 +47,7 @@ public sealed class SaveEngine
     private static bool Within(string path,string root)=>path.Equals(root,StringComparison.OrdinalIgnoreCase)||path.StartsWith(Path.EndsInDirectorySeparator(root)?root:root+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase);
     private static void AssertOrdinary(string path)
     {
-        try{if((File.GetAttributes(path)&FileAttributes.ReparsePoint)!=0)throw new IOException("路径不能是目录链接或文件链接："+path);}
-        catch(FileNotFoundException){}catch(DirectoryNotFoundException){}
+        SavePaths.AssertNotLink(path);
     }
     private static void AssertParents(string path)
     {
@@ -77,7 +77,10 @@ public sealed class SaveEngine
         Directory.CreateDirectory(destination);
         foreach(string path in Files(source)){
             string target=Path.Combine(destination,Path.GetRelativePath(source,path));
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);File.Copy(path,target,false);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            // Read the provider's bytes, not its reparse/cloud metadata or ACLs.
+            using(var input=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read))
+            using(var output=new FileStream(target,FileMode.CreateNew,FileAccess.Write,FileShare.None))input.CopyTo(output);
         }
     }
     private static string NewWork(string parent,string prefix)
@@ -231,6 +234,7 @@ public sealed class SaveEngine
     private SaveResult Restore(string archive)
     {
         archive=Path.GetFullPath(archive);
+        if(Path.GetDirectoryName(archive)!.Equals(backupAlias,StringComparison.OrdinalIgnoreCase))archive=Path.Combine(backups,Path.GetFileName(archive));
         if(!Path.GetDirectoryName(archive)!.Equals(backups,StringComparison.OrdinalIgnoreCase)||!Path.GetExtension(archive).Equals(".zip",StringComparison.OrdinalIgnoreCase))throw new IOException("请选择备份目录内的 ZIP 存档。");
         AssertParents(archive);AssertOrdinary(archive+".sha256");
         using var guard=new FileStream(archive,FileMode.Open,FileAccess.Read,FileShare.Read);

@@ -31,8 +31,9 @@ public sealed class SaveManagerService
         try{_ = File.GetAttributes(BackupRoot);}
         catch(DirectoryNotFoundException) when(!new Uri(BackupRoot).IsUnc){return [];}
         catch(FileNotFoundException) when(!new Uri(BackupRoot).IsUnc){return [];}
-        return new DirectoryInfo(BackupRoot).EnumerateFiles("Stoneshard*.zip")
-            .Where(f=>(f.Attributes&FileAttributes.ReparsePoint)==0)
+        string resolved=SavePaths.ResolveDirectoryRoot(BackupRoot);
+        return new DirectoryInfo(resolved).EnumerateFiles("Stoneshard*.zip")
+            .Where(f=>!SavePaths.IsLink(f.FullName))
             .Select(f=>new SaveArchive(f.FullName,f.Name,f.LastWriteTime,f.Length,f.Name.StartsWith("Stoneshard-before-restore-",StringComparison.OrdinalIgnoreCase),f.Name.Equals("Stoneshard-latest.zip",StringComparison.OrdinalIgnoreCase)))
             .OrderBy(a=>a.Safety).ThenByDescending(a=>a.Modified).ToArray();
     }

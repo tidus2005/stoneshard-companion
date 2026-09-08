@@ -14,10 +14,16 @@ foreach ($entry in $manifest.PSObject.Properties) {
 }
 $files = @(Get-ChildItem -LiteralPath $packageRoot -Recurse -File)
 if ($files.Count -ne @($manifest.PSObject.Properties).Count + 1) { throw 'Unexpected or missing package files.' }
-$probeFolder = Join-Path $projectRoot 'artifacts\portable-probe'
-dotnet publish (Join-Path $projectRoot 'src\Probe\StoneshardCompanion.Probe.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $probeFolder --nologo
-if ($LASTEXITCODE -ne 0) { throw 'Portable probe build failed.' }
-$start = [Diagnostics.ProcessStartInfo]::new((Join-Path $probeFolder 'StoneshardCompanion.Probe.exe'))
+# The developer harness creates junction fixtures. On some hosts the standalone
+# test EXE cannot issue FSCTL_SET_REPARSE_POINT. Use the existing SDK host for
+# fixture setup; every save operation still re-enters the extracted self-contained
+# application, with PATH stripped and PowerShell deliberately unavailable.
+$probeHost = (Get-Command dotnet -ErrorAction Stop).Source
+dotnet build (Join-Path $projectRoot 'src\Probe\StoneshardCompanion.Probe.csproj') -c Release --nologo
+if ($LASTEXITCODE -ne 0) { throw 'Portable verification harness build failed.' }
+$probeAssembly = Join-Path $projectRoot 'src\Probe\bin\Release\net8.0-windows\StoneshardCompanion.Probe.dll'
+$start = [Diagnostics.ProcessStartInfo]::new($probeHost)
+$start.ArgumentList.Add($probeAssembly)
 $start.UseShellExecute = $false
 $start.CreateNoWindow = $true
 $start.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
@@ -53,6 +59,7 @@ if ($hostsSeen.Count -ne 1 -or -not $hostsSeen.Contains($expectedHost)) { throw 
     InvalidPowerShellEnvironment = $true
     SpecialCharacterPackagePath = $true
     DeveloperToolsRemovedFromChildPath = $true
+    DeveloperHarnessCreatesJunctionFixtures = $true
     GameStarted = $false
     RealSavesModified = $false
 } | ConvertTo-Json | Tee-Object -FilePath (Join-Path $projectRoot 'artifacts\portable-verification.json')

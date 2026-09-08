@@ -92,6 +92,33 @@ internal static class SaveCompatibilityChecks
                 catch(SaveTransferException e){Check(File.Exists(e.LocalArchive)&&File.ReadAllBytes(latestZip).SequenceEqual(previousZip)&&File.ReadAllBytes(latestZip+".sha256").SequenceEqual(previousHash),"locked latest checksum preserves both old files and a local recovery archive");}
             }
             Check(File.ReadAllText(data)=="ALIVE_01","transfer and latest-update failures never modify the game save");
+            Check(SavePaths.IsNameSurrogateTag(0xA0000003)&&SavePaths.IsNameSurrogateTag(0xA000000C)&&SavePaths.IsNameSurrogateTag(0),"junction, symbolic link and unknown tags remain protected");
+            Check(!SavePaths.IsNameSurrogateTag(0x9000001A)&&!SavePaths.IsNameSurrogateTag(0x80000017)&&!SavePaths.IsNameSurrogateTag(0x80000021),"cloud, WOF and virtual-storage tags are not mistaken for path links");
+            string redirected=Path.Combine(temp,"重定向文档"),realDocs=Path.Combine(temp,"真实文档");Directory.CreateDirectory(realDocs);
+            CreateJunction(redirected,realDocs);
+            try{
+                string aliasBackups=Path.Combine(redirected,"备份 [Mac]"),physicalBackups=Path.Combine(realDocs,"备份 [Mac]");
+                var redirectedService=new SaveManagerService(workerPath,saves,aliasBackups);
+                var viaAlias=await redirectedService.RunAsync(SaveOperation.Backup);
+                Check(File.Exists(viaAlias.Archive)&&Path.GetDirectoryName(viaAlias.Archive)==physicalBackups,"redirected Documents root resolves before backup locking or writes");
+                var listed=await redirectedService.ListAsync();
+                Check(listed.Count==1&&listed[0].Path==viaAlias.Archive,"history listing and worker share the same resolved backup root");
+                File.WriteAllText(data,"AFTER_01");await redirectedService.RunAsync(SaveOperation.Restore,listed[0].Path);
+                Check(File.ReadAllText(data)=="ALIVE_01","GUI worker restores from redirected backup root with safety archive");
+                string aliasArchive=Path.Combine(aliasBackups,Path.GetFileName(viaAlias.Archive));
+                File.WriteAllText(data,"AFTER_02");new SaveEngine(saves,aliasBackups).Run(SaveOperation.Restore,aliasArchive);
+                Check(File.ReadAllText(data)=="ALIVE_01","legacy logical archive path resolves to the selected physical backup root");
+            }finally{Directory.Delete(redirected);}
+            string saveAlias=Path.Combine(temp,"save alias","StoneShard");Directory.CreateDirectory(Path.GetDirectoryName(saveAlias)!);CreateJunction(saveAlias,saves);
+            try{
+                Refused(()=>new SaveEngine(saveAlias,Path.Combine(saves,"nested")),"互相包含");
+                var viaSaveAlias=new SaveEngine(saveAlias,backups).Run(SaveOperation.Backup);
+                Check(viaSaveAlias.Files==3,"configured save-root junction can be read without copying link metadata");
+            }finally{Directory.Delete(saveAlias);}
+            string outside=Path.Combine(temp,"outside"),innerLink=Path.Combine(saves,"unexpected-link");Directory.CreateDirectory(outside);File.WriteAllText(Path.Combine(outside,"precious.txt"),"KEEP");CreateJunction(innerLink,outside);
+            try{Refused(()=>new SaveEngine(saves,backups).Run(SaveOperation.Backup),"内部不能包含");}
+            finally{Directory.Delete(innerLink);}
+            Check(File.ReadAllText(Path.Combine(outside,"precious.txt"))=="KEEP"&&File.ReadAllText(data)=="ALIVE_01","nested link refusal leaves outside and current save bytes intact");
             Console.WriteLine($"Save compatibility: {passed} checks passed");
         }finally{
             string full=Path.GetFullPath(temp);if(Path.GetDirectoryName(full)!=Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()))||!Path.GetFileName(full).StartsWith("Stoneshard-compat-"))throw new Exception("Unsafe compatibility cleanup");
@@ -101,6 +128,22 @@ internal static class SaveCompatibilityChecks
     }
     [System.Runtime.InteropServices.DllImport("kernel32.dll",CharSet=System.Runtime.InteropServices.CharSet.Unicode,SetLastError=true)]
     private static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFile(string name,uint access,uint sharing,nint security,uint disposition,uint flags,nint template);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll",SetLastError=true)]
+    private static extern bool DeviceIoControl(Microsoft.Win32.SafeHandles.SafeFileHandle handle,uint control,byte[] input,int inputBytes,nint output,int outputBytes,out uint returned,nint overlapped);
+    private static void CreateJunction(string path,string target)
+    {
+        // Junction creation needs no symlink privilege; fixture paths stay under
+        // the checked test root and links are removed non-recursively first.
+        string substitute=@"\??\"+Path.GetFullPath(target),print=Path.GetFullPath(target);
+        byte[] name=System.Text.Encoding.Unicode.GetBytes(substitute+"\0"+print+"\0"),buffer=new byte[16+name.Length];
+        BitConverter.GetBytes(0xA0000003u).CopyTo(buffer,0);BitConverter.GetBytes((ushort)(8+name.Length)).CopyTo(buffer,4);
+        BitConverter.GetBytes((ushort)(substitute.Length*2)).CopyTo(buffer,10);
+        BitConverter.GetBytes((ushort)((substitute.Length+1)*2)).CopyTo(buffer,12);BitConverter.GetBytes((ushort)(print.Length*2)).CopyTo(buffer,14);name.CopyTo(buffer,16);
+        Directory.CreateDirectory(path);
+        using var handle=CreateFile(path,0x40000000,7,0,3,0x02200000,0);
+        if(handle.IsInvalid)throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error(),"Cannot open test junction directory: "+path);
+        if(!DeviceIoControl(handle,0x000900A4,buffer,buffer.Length,0,0,out _,0))throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error(),"Cannot create test junction: "+path);
+    }
     private static Microsoft.Win32.SafeHandles.SafeFileHandle OpenDirectory(string path)
     {
         var handle=CreateFile(path,0,3,0,3,0x02000000,0);if(handle.IsInvalid)throw new System.ComponentModel.Win32Exception();return handle;

@@ -4,19 +4,21 @@
 
 **把走图、变速、补给和存档备份，放进一块可以自由摆放的游戏辅助面板。**
 
-0.3.8 · Windows x64 · 非官方开源工具 · 适配 Steam 原版 **Stoneshard 0.9.4.25 / Build 24780451**
+0.3.9 · Windows x64 · 非官方开源工具 · 适配 Steam 原版 **Stoneshard 0.9.4.25 / Build 24780451**
 
-**[下载 Windows 免安装版 ZIP](https://github.com/tidus2005/stoneshard-companion/releases/download/v0.3.8/StoneshardCompanion-0.3.8-win-x64.zip)** · [全部版本](https://github.com/tidus2005/stoneshard-companion/releases) · [完整使用说明](docs/使用说明.md)
+**[下载 Windows 免安装版 ZIP](https://github.com/tidus2005/stoneshard-companion/releases/download/v0.3.9/StoneshardCompanion-0.3.9-win-x64.zip)** · [全部版本](https://github.com/tidus2005/stoneshard-companion/releases) · [完整使用说明](docs/使用说明.md)
 
 ![晶石助手宽面板：左侧九宫格导航，上方角色状态，右侧补给、物品常显、变速和备份按钮](docs/images/hud-wide-v038.png)
 
 > 图片来自 **0.3.8 实际 WPF 界面组件的离屏预览**，角色数值、备份条目和路径为演示数据；不是游戏运行截图。自动功能在图中开启以展示效果，首次启动默认关闭。[图片生成方式](tools/DocImages/README.md)
 
+**0.3.9 更新**：按实际出口位置切图；中心被占时寻找附近可达空位；修复重定向目录被备份引擎误判为不允许的链接。[修复说明与验证范围](docs/0.3.9走图与重定向目录修复.md)
+
 An open-source Windows companion for Stoneshard with a movable overlay, speed controls, item labels, compass navigation, supplies, and save backups.
 
 ## 三步开始使用
 
-1. 下载上面的 `StoneshardCompanion-0.3.8-win-x64.zip`，**完整解压**到普通文件夹。
+1. 下载上面的 `StoneshardCompanion-0.3.9-win-x64.zip`，**完整解压**到普通文件夹。
 2. 双击 `Start.cmd` 或 `StoneshardCompanion.exe`。随包包含 .NET，存档功能无需安装 PowerShell。
 3. 打开适配版本的游戏，使用窗口或无边框全屏；把面板拖到技能栏旁的空余位置。
 
@@ -48,12 +50,12 @@ An open-source Windows companion for Stoneshard with a movable overlay, speed co
 | **← 左边缘并跨图** | **◎ 走到地图中心** | **右边缘并跨图 →** |
 | **↙ 左下角** | **↓ 下边缘并跨图** | **↘ 右下角** |
 
-九宫格四个正方向会寻路到对应边缘中部，再点击出口进入相邻地图，本次行走随之结束；斜向键走到地图角点后停下。中心键移动角色，面板右侧“地图中心”按钮只移动镜头。
+九宫格四个正方向会寻路到对应边缘中部，再点击出口进入相邻地图，本次行走随之结束；斜向键走到地图角点后停下。中心被占时，在周围最多 8 格范围内按距离选择最近的可达空位。中心键移动角色，面板右侧“地图中心”按钮只移动镜头。
 
 开启右上角的 **“方向键自动移动”** 后，也可以这样走图：
 
 1. 轻按键盘 ↑ / ↓ / ← / →，沿人物当前所在行或列走到对应边缘后停下。
-2. 已贴近出口时，再按一次同方向，点击切图箭头。
+2. 已贴近出口时，再按一次同方向，按实际出口格执行原版切图；已站在出口格上时直接处理，不再发起零距离寻路。
 3. 行走途中再次按方向键可停步；长按不会连续触发。
 
 自动行走沿用原版寻路与回合消耗。遇敌、受伤、手动接管、打开面板或切到后台时停止；不会自动攻击。不可达目标或出口会停止并提示。新增走图行为的验证范围见下方说明。
@@ -101,18 +103,19 @@ Mac 虚拟机中的“文档”可能位于共享目录，遇到断开或不可�
 
 | 验证范围 | 当前记录 |
 | --- | --- |
-| 0.3.8 存档引擎与便携程序 | 362 项离线检查；实际解压程序的临时存档备份、还原、异常检查；本机 Windows SMB 环回共享测试通过 |
+| 0.3.9 存档引擎与便携程序 | 400 项离线检查（含真实目录链接备份/还原及走图模拟）；实际解压程序的临时存档备份、还原、异常检查；本机 Windows SMB 环回共享测试通过 |
 | 历史版本游戏内测试 | 0.3.1 / 0.3.2 有拖拽、图形备份、自动喝水、面板加速、移动常显、走到边缘和切图记录，详见历史报告 |
 | 仍需实机覆盖 | 新增九宫格角点、中心行走、自动跨图、普通方向键模式、退出游戏后常驻、不同 DPI、战斗受伤时的自动补给、火把点亮与换备用、真实 Mac 虚拟机 |
 
 界面预览和离线检查不代表上述场景已经实机通过；文件哈希还原成功也不代表游戏内成功读档。跨版本测试记录不作为当前版本的完整实机验收。
 
-从 0.3.6 或之后版本升级，退出旧助手再运行新版即可；更早版本若提示旧组件，需正常重启游戏。工具包不含游戏、个人存档或本机设置。
+**升级至 0.3.9 需保存进度并正常退出游戏，再退出旧助手、启动新版与游戏**，以加载新的 v8 桥接组件。工具包不含游戏、个人存档或本机设置。
 
 <details>
 <summary>使用说明、设计与历次验证报告</summary>
 
 - [使用说明](docs/使用说明.md)
+- [0.3.9 走图与重定向目录修复](docs/0.3.9走图与重定向目录修复.md)
 - [0.3.8 共享目录备份加固](docs/0.3.8共享目录备份加固.md)
 - [0.3.7 存档兼容性修复](docs/0.3.7存档兼容性修复.md)
 - [0.3.6 改动与离线验证](docs/0.3.6改动与离线验证.md)
@@ -140,7 +143,7 @@ git clone https://github.com/tidus2005/stoneshard-companion.git
 cd stoneshard-companion
 pwsh -File scripts/test-offline.ps1
 pwsh -File scripts/build.ps1 -Publish
-pwsh -File scripts/test-portable.ps1 -ZipPath artifacts/release/StoneshardCompanion-0.3.8-win-x64.zip
+pwsh -File scripts/test-portable.ps1 -ZipPath artifacts/release/StoneshardCompanion-0.3.9-win-x64.zip
 ```
 
 离线检查不访问游戏内存、不发送输入、不打开窗口，存档检查只写独立临时目录。发布生成版本目录、完整文件 SHA256 清单及 ZIP。

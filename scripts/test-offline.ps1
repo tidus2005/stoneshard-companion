@@ -14,6 +14,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Interaction test build failed.' }
     & artifacts\interaction_test.exe | Tee-Object -FilePath artifacts\interaction-offline-v032.log
     if ($LASTEXITCODE -ne 0) { throw 'Native interaction tests failed.' }
+    & $zigCompiler cc -target x86_64-windows-gnu -O2 native\Tests\walk_native_test.c -o artifacts\walk_native_test.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Native walk adapter test build failed.' }
+    & artifacts\walk_native_test.exe | Tee-Object -FilePath artifacts\walk-native-offline.log
+    if ($LASTEXITCODE -ne 0) { throw 'Native walk adapter tests failed.' }
     dotnet src\Probe\bin\Release\net8.0-windows\StoneshardCompanion.Probe.dll OfflineTest $projectRoot | Tee-Object -FilePath artifacts\offline-v03.log
     if ($LASTEXITCODE -ne 0) { throw 'Managed offline tests failed.' }
     & pwsh -NoLogo -NoProfile -File tests\Test-SaveManager.ps1 | Tee-Object -FilePath artifacts\save-core-v03.log

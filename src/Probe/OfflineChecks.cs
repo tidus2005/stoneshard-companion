@@ -49,7 +49,7 @@ internal static class OfflineChecks
         BitConverter.GetBytes(12345ul).CopyTo(packet,3952);BitConverter.GetBytes(1u).CopyTo(packet,3960);
         BitConverter.GetBytes(1u).CopyTo(packet,3964);
         var decoded=EngineBridge.DecodeSnapshot(packet);
-        Check(decoded.Ready&&decoded.Fresh&&decoded.SceneReady&&decoded.Capabilities==64&&decoded.WalkDirection==4&&decoded.WalkPhase==1&&decoded.WalkKeysEnabled&&decoded.WalkX==2327&&decoded.WalkY==1183&&decoded.LabelDrawOverrides==12345,"v7 snapshot decodes keyboard mode and preserves existing tail fields");
+        Check(decoded.Ready&&decoded.Fresh&&decoded.SceneReady&&decoded.Capabilities==64&&decoded.WalkDirection==4&&decoded.WalkPhase==1&&decoded.WalkKeysEnabled&&decoded.WalkX==2327&&decoded.WalkY==1183&&decoded.LabelDrawOverrides==12345,"v8 snapshot decodes keyboard mode and preserves existing tail fields");
         Check((decoded with{WalkState=2,WalkDirection=6}).WalkStatus=="已到达左上角"&&(decoded with{WalkState=2,WalkDirection=11}).WalkStatus=="已到达人物正上方边缘","corner and relative arrival show their real destination");
         Check((decoded with{WalkPhase=0,WalkDirection=14}).WalkStatus.Contains("人物正右方边缘")&&(decoded with{WalkPhase=1}).WalkStatus.Contains("相邻地图"),"keyboard and crossing routes have distinct progress");
         await Fails(()=>Task.Run(()=>EngineBridge.DecodeSnapshot(new byte[3960])),"数据不完整");

@@ -22,7 +22,7 @@ public sealed class SaveWindow : Window
     private bool loadingHistory,historyQueued,closed;
     public SaveWindow(MainWindow owner)
     {
-        coordinator=owner;Title="晶石助手 · 存档管理";Width=840;Height=680;MinWidth=520;MinHeight=500;WindowStartupLocation=WindowStartupLocation.CenterScreen;
+        coordinator=owner;Title=$"晶石助手 {System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3)} · 存档管理";Width=840;Height=680;MinWidth=520;MinHeight=500;WindowStartupLocation=WindowStartupLocation.CenterScreen;
         Background=new SolidColorBrush(Color.FromRgb(25,23,31));Foreground=Brushes.Wheat;FontFamily=new FontFamily("Microsoft YaHei UI");
         var body=new Grid{Margin=new Thickness(22)};Content=new ScrollViewer{Content=body,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
         SizeChanged+=(_,_)=>history.Height=Math.Clamp(ActualHeight-400,140,450);
@@ -41,6 +41,9 @@ public sealed class SaveWindow : Window
             catch(Exception e){status.Text="备份目录未切换："+e.Message;}
         });
         var state=new StackPanel();state.Children.Add(status);state.Children.Add(progress);Grid.SetRow(state,2);body.Children.Add(state);
+        var copyStatus=new Button{Content="复制状态与路径",HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,0,0,6)};
+        copyStatus.Click+=(_,_)=>{try{Clipboard.SetText($"{Title}\n{status.Text}\n{latest.Text}\n{locations.Text}");}catch(System.Runtime.InteropServices.ExternalException){status.Text="剪贴板正在被占用，请稍后重试。";}};
+        state.Children.Add(copyStatus);
         Grid.SetRow(history,3);body.Children.Add(history);
         var restoreRow=new WrapPanel{Margin=new Thickness(0,8,0,0)};Grid.SetRow(restoreRow,4);body.Children.Add(restoreRow);
         Add(restoreRow,"还原选中的备份",()=>{
