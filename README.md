@@ -2,14 +2,24 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**0.3.4 · Windows x64 · 非官方游戏增强工具**
+**0.3.5 · Windows x64 · 非官方游戏增强工具**
 
 An open-source Windows companion for Stoneshard, featuring a movable overlay,
 engine speed controls, persistent item labels, compass navigation, and save backups.
 
 Windows 单面板游戏增强工具，适配 Steam 原版 **Stoneshard 0.9.4.25 / Build 24780451**。
 
-从源码下载后，请先按下方“开发”步骤构建。构建完成后双击根目录 `启动晶石助手.cmd`，或运行 `artifacts/release/StoneshardCompanion-0.3.4/StoneshardCompanion.exe`。新版使用独立目录，保留旧版成品。EXE、桥接 DLL 和 Assets 文件夹须一起保留；升级后需重启游戏以载入新桥接组件。
+## 直接下载运行（Windows 11 x64）
+
+**[下载最新免安装 ZIP](https://github.com/tidus2005/stoneshard-companion/releases/latest/download/StoneshardCompanion-0.3.5-win-x64.zip)** · [全部 Releases](https://github.com/tidus2005/stoneshard-companion/releases)
+
+1. 下载 `StoneshardCompanion-0.3.5-win-x64.zip`，完整解压到任意普通文件夹。
+2. 双击解压后的 `Start.cmd` 或 `StoneshardCompanion.exe`。
+3. 打开上述适配版本的游戏，使用窗口或无边框全屏。
+
+适用于 Intel / AMD 的 Windows 11 x64（不是 Windows ARM64 原生包）。**随包包含 .NET 和 PowerShell，存档备份/还原也无需另装依赖**。保留 EXE、DLL、Assets 和 Runtime 文件夹；不要只复制 EXE，也不要在 ZIP 内直接启动。首次启动会解开 .NET 自带组件。升级时先正常退出旧助手和游戏，再运行新版。工具包不含游戏、个人存档或本机设置。
+
+源码下载仅供开发，需按下方步骤构建。GitHub 自动生成的 `Source code` 压缩包不是可运行成品。
 
 - 单面板：拖动顶部移动，拖动四角调整宽高，按钮自适应排列，记住位置和尺寸。
 - 物品常显：移动和装备栏切换时持续显示地面物品名称，切图及重连后恢复开启状态。
@@ -20,9 +30,10 @@ Windows 单面板游戏增强工具，适配 Steam 原版 **Stoneshard 0.9.4.25 
 - 存档：一键完整备份、刷新最新副本、历史列表、选择还原和进度提示；兼容现有存档助手备份。
 - 保留 1～4 倍引擎速度及切图记忆、面甲、镜头居中、四项角色状态。
 
-0.3.4 仅运行离线检查并构建发布，未启动游戏。九宫格角点、普通方向键模式，以及此前的自动跨图、中心行走和常驻面板尚未实机验证。旧版已验证项目和未覆盖项见历史报告；自动火把点亮及耗尽换备用仍未实机验证。
+0.3.5 增加完整便携运行组件；包内存档组件及解压文件经过离线检查，未在另一台电脑或游戏内实测。九宫格角点、普通方向键模式，以及此前的自动跨图、中心行走和常驻面板尚未实机验证。旧版已验证项目和未覆盖项见历史报告；自动火把点亮及耗尽换备用仍未实机验证。
 
 - [使用说明](docs/使用说明.md)
+- [0.3.5 便携发行与验证](docs/0.3.5便携发行与验证.md)
 - [0.3.4 实现与离线验证](docs/0.3.4实现与离线验证.md)
 - [0.3.3 实现与离线验证](docs/0.3.3实现与离线验证.md)
 - [0.3.2 修复与实机验证](docs/0.3.2修复与实机验证.md)
@@ -44,6 +55,7 @@ git clone https://github.com/tidus2005/stoneshard-companion.git
 cd stoneshard-companion
 pwsh -File scripts/test-offline.ps1
 pwsh -File scripts/build.ps1 -Publish
+pwsh -File scripts/test-portable.ps1 -ZipPath artifacts/release/StoneshardCompanion-0.3.5-win-x64.zip
 ```
 
 离线检查不访问游戏内存、不发送输入、不打开窗口，存档检查只写独立临时目录。发布生成版本目录、完整文件 SHA256 清单及 ZIP。

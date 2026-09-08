@@ -66,8 +66,12 @@ public sealed class SaveManagerService
             if(requestFile is not null){try{File.Delete(requestFile);}catch(IOException){}}
         }
     }
-    private static string FindPowerShell()
+    private string FindPowerShell()
     {
+        // Resolve against the packaged worker, never the current directory or PATH.
+        string portable=Path.GetFullPath(Path.Combine(Path.GetDirectoryName(runner)!,"..","..","Runtime","PowerShell","pwsh.exe"));
+        if(File.Exists(portable))return portable;
+        if(Directory.Exists(Path.GetDirectoryName(portable)))throw new FileNotFoundException("随附存档运行组件不完整，请重新完整解压便携包。",portable);
         string standard=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"PowerShell","7","pwsh.exe");
         if(File.Exists(standard))return standard;
         foreach(string folder in (Environment.GetEnvironmentVariable("PATH")??"").Split(Path.PathSeparator)){

@@ -2,7 +2,7 @@ using StoneshardCompanion;
 using System.Text.Json;
 
 try{
-    if(args.Length>0&&args[0]=="OfflineTest"){await OfflineChecks.Run(Path.GetFullPath(args.Length>1?args[1]:"."));return;}
+    if(args.Length>0&&args[0]=="OfflineTest"){await OfflineChecks.Run(Path.GetFullPath(args.Length>1?args[1]:"."),args.Length>2?Path.GetFullPath(args[2]):null);return;}
     if(args.Length>0&&args[0]=="SelfTest"){IntentChecks.Run();return;}
     if(args.Length>1&&args[0]=="Ui"){
         int pid=int.Parse(args[1]);var windows=new List<object>();
