@@ -231,7 +231,7 @@ public partial class MainWindow : Window
     public async Task SaveAsync(SaveOperation operation,string? archive=null)
     {
         if(Saves.Busy)return;
-        var progress=new Progress<string>(message=>{SaveStatus=message;savesWindow?.Refresh();});
+        var progress=new Progress<string>(message=>{SaveStatus=message;savesWindow?.Refresh(false);});
         SaveStatus=operation==SaveOperation.Restore?"正在准备还原…":"正在准备备份…";savesWindow?.Refresh();
         try{
             var result=await Saves.RunAsync(operation,archive,progress);

@@ -4,11 +4,17 @@ using System.Text;
 
 namespace StoneshardCompanion;
 
+public sealed class SaveTransferException(string message,string localArchive,Exception cause):IOException(message,cause)
+{
+    public string LocalArchive {get;}=localArchive;
+}
+
 // All operations use literal file-system paths and .NET APIs. No shell, module
 // discovery, system installation, game process or current-directory dependency.
 public sealed class SaveEngine
 {
-    private readonly string saves,backups;
+    private readonly string saves,backups,staging;
+    public static string DefaultStagingRoot=>Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"StoneshardCompanion","BackupRecovery");
     private readonly Action<string> report;
     private sealed record Entry(string Name,long Bytes,string Hash,long Written);
     private sealed record Snapshot(Entry[] Entries)
@@ -16,13 +22,15 @@ public sealed class SaveEngine
         public string Hash=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n',Entries.Select(e=>$"{e.Name}\t{e.Bytes}\t{e.Hash}")))));
         public bool Same(Snapshot? other,bool writes=false)=>other is not null&&Entries.Length==other.Entries.Length&&Entries.Zip(other.Entries).All(p=>p.First.Name==p.Second.Name&&p.First.Bytes==p.Second.Bytes&&p.First.Hash==p.Second.Hash&&(!writes||p.First.Written==p.Second.Written));
     }
-    public SaveEngine(string saveRoot,string backupRoot,Action<string>? progress=null)
+    public SaveEngine(string saveRoot,string backupRoot,Action<string>? progress=null,string? stagingRoot=null)
     {
         saves=Path.TrimEndingDirectorySeparator(Path.GetFullPath(saveRoot));
         backups=Path.TrimEndingDirectorySeparator(Path.GetFullPath(backupRoot));
+        staging=Path.TrimEndingDirectorySeparator(Path.GetFullPath(stagingRoot??DefaultStagingRoot));
         report=progress??(_=>{});
         if(!Path.GetFileName(saves).Equals("StoneShard",StringComparison.OrdinalIgnoreCase))throw new IOException("存档目录名称必须为 StoneShard。");
         if(Within(backups,saves)||Within(saves,backups))throw new IOException("备份目录与存档目录不能互相包含。");
+        if(Within(staging,saves))throw new IOException("本地备份工作目录不能位于存档目录中。");
     }
     public SaveResult Run(SaveOperation operation,string? archive=null)
     {
@@ -35,7 +43,7 @@ public sealed class SaveEngine
         catch(IOException e){throw new IOException("另一个存档管理器正在操作，或备份目录无法写入。请等待其完成并检查目录权限。",e);}
         using(manager){return operation==SaveOperation.Restore?Restore(archive??throw new IOException("请选择现有备份。")):Backup(operation==SaveOperation.Latest).Result;}
     }
-    private static bool Within(string path,string root)=>path.Equals(root,StringComparison.OrdinalIgnoreCase)||path.StartsWith(root+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase);
+    private static bool Within(string path,string root)=>path.Equals(root,StringComparison.OrdinalIgnoreCase)||path.StartsWith(Path.EndsInDirectorySeparator(root)?root:root+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase);
     private static void AssertOrdinary(string path)
     {
         try{if((File.GetAttributes(path)&FileAttributes.ReparsePoint)!=0)throw new IOException("路径不能是目录链接或文件链接："+path);}
@@ -98,7 +106,8 @@ public sealed class SaveEngine
     private (SaveResult Result,Snapshot Tree) Backup(bool latest=false,string prefix="Stoneshard-all-saves")
     {
         if(!Directory.Exists(saves))throw new DirectoryNotFoundException("找不到 Stoneshard 存档目录，请先在游戏中保存一次："+saves);
-        string work=NewWork(backups,".work-");
+        string work=NewWork(staging,".work-");
+        string? publishWork=null,localArchive=null;bool retain=false;
         try{
             Snapshot? verified=null;string snapshot="";
             for(int attempt=1;attempt<=3;attempt++){
@@ -114,19 +123,48 @@ public sealed class SaveEngine
             string zip=Path.Combine(work,"backup.zip");ZipFile.CreateFromDirectory(snapshot,zip,CompressionLevel.Optimal,true);
             string verify=Path.Combine(work,"verify");Extract(zip,verify);
             if(!verified.Same(ReadTree(Path.Combine(verify,"StoneShard"))))throw new IOException("压缩包解压校验失败，未发布备份。");
-            string archive=Path.Combine(backups,$"{prefix}-{DateTime.Now:yyyy-MM-dd_HH-mm-ss-fff}-{Guid.NewGuid():N}.zip");
+            string archiveName=$"{prefix}-{DateTime.Now:yyyy-MM-dd_HH-mm-ss-fff}-{Guid.NewGuid():N}.zip";
+            string archive=Path.Combine(backups,archiveName);
             string hash=Hash(zip);Sidecar(zip,hash);
+            string completed=Path.Combine(work,archiveName);File.Move(zip,completed);File.Move(zip+".sha256",completed+".sha256");localArchive=completed;
+            // Snapshot compression and extraction stay on local storage; only
+            // the completed ZIP is copied to the selected disk / network share.
+            foreach(string folder in Directory.EnumerateDirectories(work)){AssertParents(folder);DeleteTree(folder);}
+            publishWork=NewWork(backups,".work-");
+            string uploaded=Path.Combine(publishWork,"upload.zip");
+            report("正在写入备份目录并校验传输结果...");
+            CopyArchive(localArchive,uploaded);
+            if(Hash(uploaded)!=hash)throw new IOException("备份传输校验失败。");
+            Sidecar(uploaded,hash);
             // Publish the ZIP last: an interrupted commit may leave an orphan
             // checksum, but never a newly listed history ZIP without its hash.
-            File.Move(zip+".sha256",archive+".sha256");File.Move(zip,archive);
+            File.Move(uploaded+".sha256",archive+".sha256");File.Move(uploaded,archive);
             if(latest){
                 string target=Path.Combine(backups,"Stoneshard-latest.zip");AssertOrdinary(target);AssertOrdinary(target+".sha256");
-                string copy=Path.Combine(work,"latest.zip");File.Copy(archive,copy);
+                // Refuse known locks / read-only files before replacing either
+                // member of the latest ZIP and checksum pair.
+                foreach(string file in new[]{target,target+".sha256"})if(File.Exists(file)){using var probe=new FileStream(file,FileMode.Open,FileAccess.ReadWrite,FileShare.Read);}
+                string copy=Path.Combine(publishWork,"latest.zip");CopyArchive(localArchive,copy);
                 if(Hash(copy)!=hash)throw new IOException("最新副本复制校验失败；历史备份已保留："+archive);
                 Sidecar(copy,hash);File.Move(copy,target,true);File.Move(copy+".sha256",target+".sha256",true);
             }
             return (new(archive,verified.Entries.Length,hash,null),verified);
-        }finally{Cleanup(work,backups,".work-");}
+        }catch(Exception e) when(localArchive is not null&&(e is IOException or UnauthorizedAccessException)){
+            retain=true;
+            throw new SaveTransferException($"备份目录写入未完成。已校验的本地完整备份保留在：{localArchive}。可从“本地备用备份”打开，目录恢复后复制 ZIP 和同名 .sha256 文件。{e.Message}",localArchive,e);
+        }finally{
+            // A failed share may stall on every subsequent access. Return the
+            // local recovery path without immediately touching it again.
+            if(publishWork is not null&&!retain)Cleanup(publishWork,backups,".work-");
+            if(!retain)Cleanup(work,staging,".work-");
+        }
+    }
+    private static void CopyArchive(string source,string target)
+    {
+        // Stream bytes instead of carrying source attributes/ACLs onto a share.
+        using var input=new FileStream(source,FileMode.Open,FileAccess.Read,FileShare.Read);
+        using var output=new FileStream(target,FileMode.CreateNew,FileAccess.Write,FileShare.None);
+        input.CopyTo(output);output.Flush(true);
     }
     private static void Extract(string path,string destination)
     {

@@ -26,19 +26,24 @@ public sealed class SaveManagerService
     }
     public IReadOnlyList<SaveArchive> List()
     {
-        if(!Directory.Exists(BackupRoot))return [];
+        // Directory.Exists also returns false on denied/offline paths. Preserve
+        // those errors so a disconnected share is not shown as "no backups".
+        try{_ = File.GetAttributes(BackupRoot);}
+        catch(DirectoryNotFoundException) when(!new Uri(BackupRoot).IsUnc){return [];}
+        catch(FileNotFoundException) when(!new Uri(BackupRoot).IsUnc){return [];}
         return new DirectoryInfo(BackupRoot).EnumerateFiles("Stoneshard*.zip")
             .Where(f=>(f.Attributes&FileAttributes.ReparsePoint)==0)
             .Select(f=>new SaveArchive(f.FullName,f.Name,f.LastWriteTime,f.Length,f.Name.StartsWith("Stoneshard-before-restore-",StringComparison.OrdinalIgnoreCase),f.Name.Equals("Stoneshard-latest.zip",StringComparison.OrdinalIgnoreCase)))
             .OrderBy(a=>a.Safety).ThenByDescending(a=>a.Modified).ToArray();
     }
+    public Task<IReadOnlyList<SaveArchive>> ListAsync()=>Task.Run(List);
     public async Task<SaveResult> RunAsync(SaveOperation operation,string? archive=null,IProgress<string>? progress=null)
     {
         if(!await gate.WaitAsync(0))throw new InvalidOperationException("存档操作正在进行。");
         Busy=true;string? requestFile=null;
         try {
             if(operation==SaveOperation.Restore){
-                if(archive is null||!List().Any(a=>string.Equals(a.Path,Path.GetFullPath(archive),StringComparison.OrdinalIgnoreCase)))throw new InvalidOperationException("请选择现有备份目录中的存档。");
+                if(archive is null||!(await ListAsync()).Any(a=>string.Equals(a.Path,Path.GetFullPath(archive),StringComparison.OrdinalIgnoreCase)))throw new InvalidOperationException("请选择现有备份目录中的存档。");
             }
             // ArgumentList and a JSON file keep file names and user paths out of shell code.
             requestFile=Path.Combine(Path.GetTempPath(),"StoneshardCompanion-"+Guid.NewGuid().ToString("N")+".json");

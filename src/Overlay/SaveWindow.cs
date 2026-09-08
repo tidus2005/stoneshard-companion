@@ -19,6 +19,7 @@ public sealed class SaveWindow : Window
     private readonly List<Button> operations=[];
     private readonly Button confirm=new();
     private SaveArchive? pending;
+    private bool loadingHistory,historyQueued,closed;
     public SaveWindow(MainWindow owner)
     {
         coordinator=owner;Title="晶石助手 · 存档管理";Width=840;Height=680;MinWidth=520;MinHeight=500;WindowStartupLocation=WindowStartupLocation.CenterScreen;
@@ -30,8 +31,9 @@ public sealed class SaveWindow : Window
         header.Children.Add(new TextBlock{Text="备份已保存到磁盘的全部角色与设置；不会保存尚未落盘的游戏进度。",TextWrapping=TextWrapping.Wrap,Foreground=Brushes.Silver,Margin=new Thickness(0,8,0,10)});header.Children.Add(latest);body.Children.Add(header);
         header.Children.Add(locations);
         var buttons=new WrapPanel{Margin=new Thickness(0,12,0,4)};Grid.SetRow(buttons,1);body.Children.Add(buttons);
-        Add(buttons,"一键完整备份",()=>owner.Backup(false));Add(buttons,"刷新最新备份",()=>owner.Backup(true));Add(buttons,"刷新列表",Refresh);
+        Add(buttons,"一键完整备份",()=>owner.Backup(false));Add(buttons,"刷新最新备份",()=>owner.Backup(true));Add(buttons,"刷新列表",()=>Refresh());
         Add(buttons,"打开备份目录",()=>{try{System.IO.Directory.CreateDirectory(owner.Saves.BackupRoot);Process.Start(new ProcessStartInfo(owner.Saves.BackupRoot){UseShellExecute=true});}catch(Exception e){status.Text=e.Message;}});
+        Add(buttons,"本地备用备份",()=>{try{System.IO.Directory.CreateDirectory(SaveEngine.DefaultStagingRoot);Process.Start(new ProcessStartInfo(SaveEngine.DefaultStagingRoot){UseShellExecute=true});}catch(Exception e){status.Text=e.Message;}});
         Add(buttons,"选择备份目录",()=>{
             var picker=new Microsoft.Win32.OpenFolderDialog{Title="选择备份目录（原有备份保留在原目录）",Multiselect=false};
             if(picker.ShowDialog(this)!=true)return;
@@ -56,21 +58,31 @@ public sealed class SaveWindow : Window
         inMenu.Checked+=(_,_)=>confirm.IsEnabled=!owner.Saves.Busy;inMenu.Unchecked+=(_,_)=>confirm.IsEnabled=false;
         Grid.SetRow(confirmation,5);body.Children.Add(confirmation);
         Closing+=(_,e)=>{if(owner.Saves.Busy){e.Cancel=true;status.Text="存档操作正在进行，请完成后关闭。";}};
+        Closed+=(_,_)=>closed=true;
         Refresh();
     }
     private Button Add(Panel panel,string text,Action action)
     {
         var b=new Button{Content=text,Margin=new Thickness(0,0,8,5)};b.Click+=(_,_)=>action();panel.Children.Add(b);operations.Add(b);return b;
     }
-    public void Refresh()
+    public void Refresh(bool reloadHistory=true)
     {
         bool busy=coordinator.Saves.Busy;status.Text=coordinator.SaveStatus;progress.Visibility=busy?Visibility.Visible:Visibility.Collapsed;progress.IsIndeterminate=busy;
         locations.Text=$"存档：{coordinator.Saves.SaveRoot}\n备份：{coordinator.Saves.BackupRoot}";
         foreach(var button in operations)button.IsEnabled=!busy;confirm.IsEnabled=!busy&&pending is not null&&inMenu.IsChecked==true;history.IsEnabled=!busy;
+        if(reloadHistory&&!busy)_=ReloadHistory();
+    }
+    private async Task ReloadHistory()
+    {
+        if(loadingHistory){historyQueued=true;return;}
+        historyQueued=false;loadingHistory=true;var service=coordinator.Saves;latest.Text="正在读取备份列表…";
         try{
-            string? selected=(history.SelectedItem as SaveArchive)?.Path;var items=coordinator.Saves.List();history.ItemsSource=items;
+            var items=await service.ListAsync();
+            if(closed||service!=coordinator.Saves)return;
+            string? selected=(history.SelectedItem as SaveArchive)?.Path;history.ItemsSource=items;
             history.SelectedItem=items.FirstOrDefault(a=>a.Path==selected)??items.FirstOrDefault();var last=items.FirstOrDefault(a=>!a.Safety);
             latest.Text=last is null?"尚无备份":$"最近备份：{last.Modified:yyyy-MM-dd HH:mm:ss} · {last.Name}";
-        }catch(Exception e){status.Text="读取备份列表失败："+e.Message;}
+        }catch(Exception e){if(!closed&&service==coordinator.Saves)latest.Text="读取备份列表失败："+e.Message;}
+        finally{loadingHistory=false;if(historyQueued&&!closed&&!coordinator.Saves.Busy){historyQueued=false;_=ReloadHistory();}}
     }
 }

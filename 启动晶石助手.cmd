@@ -1,5 +1,5 @@
 @echo off
-set "companion=%~dp0artifacts\release\StoneshardCompanion-0.3.7\StoneshardCompanion.exe"
+set "companion=%~dp0artifacts\release\StoneshardCompanion-0.3.8\StoneshardCompanion.exe"
 if not exist "%companion%" (
   echo Please run scripts\build.ps1 -Publish first.
   pause
