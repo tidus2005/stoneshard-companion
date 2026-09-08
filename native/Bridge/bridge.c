@@ -111,7 +111,7 @@ static void on_command(void) {
         else {highlight_requested=!highlight_requested;publish(0,"Highlight preference changed");}
     }
     else if(cmd==15){if(arg!=0&&arg!=1)publish(4,"Invalid highlight state");else{highlight_requested=arg==1;publish(0,"Highlight intent synchronized");}}
-    else if(cmd==14){int result=(!isfinite(arg)||floor(arg)!=arg||arg<0||arg>9)?4:start_walk((int)arg);publish(result,result?"Native walk unavailable":"Native map journey requested");}
+    else if(cmd==14){int result=(!isfinite(arg)||floor(arg)!=arg||arg<0||arg>9)?4:request_walk((int)arg);publish(result,result?"Native walk unavailable":"Native map journey requested");}
     else if(cmd==16){if(arg!=0&&arg!=1)publish(4,"Invalid walk keys state");else{set_walk_keys(arg==1);publish(0,"Walk keys intent synchronized");}}
     else if(cmd==11){if(arg!=0&&arg!=1)publish(4,"Invalid water mode");else{int result=drink_water(arg==1);publish(result,result?"Water action unavailable or not confirmed":"Water consumed by native action");}}
     else if(cmd==12){if(arg!=0&&arg!=1&&arg!=2&&arg!=17&&arg!=18)publish(4,"Invalid torch mode");else{int mode=(int)arg;int result=toggle_torch(mode&3,(mode&16)!=0);publish(result,result?"Torch action unavailable or not confirmed":"Torch native action confirmed");}}
@@ -207,7 +207,7 @@ __declspec(dllexport) DWORD WINAPI BridgeStart(void* ignored) {
     // Startup can expose a window before the frame manager is initialized.
     // Do not publish a mapping until a valid baseline exists; allow a later retry.
     baseline=get_speed();if(!isfinite(baseline)||baseline<1 || baseline>240)return start_failed(15);
-    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v6.%lu",GetCurrentProcessId());
+    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v7.%lu",GetCurrentProcessId());
     mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,NULL,PAGE_READWRITE,0,4096,name);
     if(!mapping)return start_failed(12);
     if(GetLastError()==ERROR_ALREADY_EXISTS)return start_failed(13);

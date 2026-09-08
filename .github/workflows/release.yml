@@ -46,12 +46,12 @@ jobs:
           if (-not (Test-Path -LiteralPath $notes)) { throw 'Release notes missing' }
           $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
           $api = "https://api.github.com/repos/$env:GITHUB_REPOSITORY"
-          $matches = @(Invoke-RestMethod "$api/releases?per_page=100" -Headers $headers | ForEach-Object { $_ } | Where-Object tag_name -eq $tag)
-          if ($matches.Count -gt 1) { throw 'Multiple drafts share this version; resolve them before publishing.' }
+          $matchingReleases = @(Invoke-RestMethod "$api/releases?per_page=100" -Headers $headers | ForEach-Object { $_ } | Where-Object tag_name -eq $tag)
+          if ($matchingReleases.Count -gt 1) { throw 'Multiple drafts share this version; resolve them before publishing.' }
           $payload = @{ tag_name = $tag; target_commitish = $env:GITHUB_SHA; name = "$tag - Windows 11 x64 portable"; body = (Get-Content -LiteralPath $notes -Raw); draft = $true } | ConvertTo-Json
-          if ($matches.Count -eq 1) {
-            if (-not $matches[0].draft) { throw 'This release is already public; use a new version instead of replacing its files.' }
-            $release = Invoke-RestMethod "$api/releases/$($matches[0].id)" -Headers $headers -Method Patch -ContentType 'application/json; charset=utf-8' -Body $payload
+          if ($matchingReleases.Count -eq 1) {
+            if (-not $matchingReleases[0].draft) { throw 'This release is already public; use a new version instead of replacing its files.' }
+            $release = Invoke-RestMethod "$api/releases/$($matchingReleases[0].id)" -Headers $headers -Method Patch -ContentType 'application/json; charset=utf-8' -Body $payload
           } else {
             $release = Invoke-RestMethod "$api/releases" -Headers $headers -Method Post -ContentType 'application/json; charset=utf-8' -Body $payload
           }

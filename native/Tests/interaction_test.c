@@ -127,7 +127,7 @@ int main(void){
     reset();shared->player_x=NAN;check(start_walk(11)==4&&move_calls==0,"unknown character coordinate refuses relative route");
     reset();shared->player_x=13;check(start_walk(11)==4&&move_calls==0,"relative origin on transition column fails closed");
     reset();shared->player_x=507;shared->player_y=39;begin(11);
-    check(shared->walk_state==WALK_ARRIVED&&move_calls==0,"already at relative boundary does not move or cross");
+    check(shared->walk_state==WALK_ACTIVE&&shared->walk_phase==1&&move_calls==1&&sent_x==507&&sent_y==13,"fresh relative request at boundary clicks exit");
     reset();check(!handle_walk_key(VK_UP,false,false,true,true)&&move_calls==0,"disabled arrow mode delegates native key");
     for(int cause=0;cause<7;cause++){
         reset();set_walk_keys(true);
@@ -167,5 +167,47 @@ int main(void){
     check(shared->walk_keys_enabled&&shared->walk_state==WALK_SCENE&&move_calls==1&&stop_calls==0,"map change retains mode but held key never restarts in new scene");
     reset();set_walk_keys(true);begin(11);idle=false;enemy=true;reconcile_walk(0);
     check(shared->walk_state==WALK_THREAT&&stop_calls==1&&move_calls==1,"relative journey stops when a new enemy appears");
+    for(int d=1;d<=4;d++)for(int relative=0;relative<2;relative++){
+        reset();set_walk_keys(true);
+        shared->player_x=px=d==3?39:d==4?2301:507;shared->player_y=py=d==1?39:d==2?2301:767;
+        int direction=d+(relative?10:0);request_walk(direction);test_now+=200;reconcile_walk(0);
+        check(move_calls==1&&shared->walk_phase==1&&sent_x==(d==3?13:d==4?2327:507)&&sent_y==(d==1?13:d==2?2327:767),"fresh edge request clicks current exit without routing to border midpoint");
+        for(int i=0;i<5;i++)handle_walk_key(keys[d-1],true,false,true,true);
+        check(move_calls==1&&shared->walk_state==WALK_ACTIVE,"held key does not repeat or cancel exit click");
+        shared->scene_generation++;reconcile_walk(0);handle_walk_key(keys[d-1],true,false,true,true);test_now+=300;reconcile_walk(0);
+        check(move_calls==1&&stop_calls==0&&shared->walk_state==WALK_SCENE,"exit journey ends after exactly one transition");
+    }
+    for(int d=1;d<=4;d++){
+        reset();set_walk_keys(true);shared->player_x=px=507;shared->player_y=py=767;
+        begin(d+10);shared->player_x=px=sent_x;shared->player_y=py=sent_y;
+        // Key arrives before the next supervisor timer has recorded arrival.
+        handle_walk_key(keys[d-1],false,false,true,true);test_now+=200;reconcile_walk(0);
+        check(move_calls==2&&stop_calls==0&&shared->walk_phase==1,"second press at arrival dispatches exit even before timer acknowledgement");
+    }
+    reset();set_walk_keys(true);begin(11);shared->player_x=px=sent_x;shared->player_y=py=sent_y;reconcile_walk(0);
+    check(shared->walk_state==WALK_ARRIVED&&move_calls==1,"initial relative journey still stops at edge");
+    handle_walk_key(VK_UP,true,false,true,true);test_now+=300;reconcile_walk(0);
+    check(move_calls==1&&shared->walk_state==WALK_ARRIVED,"arrival with key still held never exits automatically");
+    handle_walk_key(VK_UP,false,false,true,true);test_now+=200;reconcile_walk(0);
+    check(move_calls==2&&shared->walk_phase==1&&sent_y==13,"new physical press after recorded arrival clicks exit");
+    reset();request_walk(1);request_walk(2);test_now+=200;reconcile_walk(0);
+    check(shared->walk_state==WALK_MANUAL&&move_calls==0,"grid second click cancels pending route instead of replacing it");
+    reset();begin(1);request_walk(2);
+    check(shared->walk_state==WALK_MANUAL&&stop_calls==1,"grid second click still stops active movement");
+    for(int cause=0;cause<4;cause++){
+        reset();set_walk_keys(true);shared->player_x=px=507;shared->player_y=py=39;
+        handle_walk_key(VK_UP,false,false,true,true);
+        if(cause==0)enemy=true;if(cause==1)damage=true;if(cause==2)shared->ui_flags=1;if(cause==3)shared->scene_generation++;
+        test_now+=200;reconcile_walk(0);
+        check(move_calls==0&&shared->walk_state!=WALK_ACTIVE,"threat panel or scene change before exit dispatch cancels it");
+    }
+    reset();set_walk_keys(true);shared->player_x=px=507;shared->player_y=py=39;begin(11);px=sent_x;py=sent_y;reconcile_walk(0);test_now+=2100;reconcile_walk(0);
+    check(shared->walk_state==WALK_BLOCKED&&move_calls==1,"exit without native transition reports blocked and never retries");
+    reset();shared->player_x=px=507;shared->player_y=py=65;begin(11);
+    check(shared->walk_phase==0&&sent_y==39,"two tiles away still approaches edge rather than clicking exit");
+    reset();shared->player_x=px=507;shared->player_y=py=13;begin(11);
+    check(shared->walk_phase==1&&move_calls==1&&sent_x==507&&sent_y==13,"already on outer tile permits one original exit click");
+    reset();shared->player_x=px=507;shared->player_y=py=39;begin(12);
+    check(shared->walk_phase==0&&sent_y==2301,"opposite direction from border travels inward normally");
     printf("%d native interaction checks passed. No game accessed.\n",passed);return 0;
 }

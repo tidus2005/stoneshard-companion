@@ -26,7 +26,7 @@ static bool walk_target(int direction,double width,double height,bool outer,doub
     return true;
 }
 // Keyboard routes preserve the character's column/row, independent of camera.
-// They stop on the inner boundary and never request a map transition.
+// They stop on the inner boundary. A fresh press there requests one exit click.
 static bool walk_destination(int direction,double* x,double* y){
     bool relative=direction>=11&&direction<=14;
     if(!walk_target(relative?direction-10:direction,shared->map_w,shared->map_h,false,x,y))return false;
@@ -42,6 +42,20 @@ static bool walk_destination(int direction,double* x,double* y){
 static bool walk_threat(RV player){
     return member_number(player,"is_see_enemy")!=0||member_number(player,"is_damage_taken")!=0||member_number(player,"is_take_injury")!=0;
 }
+static int walk_cardinal(int direction){return direction>=11&&direction<=14?direction-10:direction>=1&&direction<=4?direction:0;}
+static bool walk_exit_target(int direction,double* x,double* y){
+    int d=walk_cardinal(direction);double px=shared->player_x,py=shared->player_y;
+    if(!d||!walk_target(d,shared->map_w,shared->map_h,true,x,y)||!isfinite(px)||!isfinite(py))return false;
+    int cols=(int)floor(shared->map_w/26),rows=(int)floor(shared->map_h/26);
+    if(px<0||py<0||px>=cols*26||py>=rows*26)return false;
+    int col=(int)floor(px/26),row=(int)floor(py/26);
+    bool edge=d==1?row<=1:d==2?row>=rows-2:d==3?col<=1:col>=cols-2;
+    if(!edge)return false;
+    // Retain the current column/row, never drag a border player to its midpoint.
+    if(d<=2){if(col<1||col>cols-2)return false;*x=col*26+13;}
+    else{if(row<1||row>rows-2)return false;*y=row*26+13;}
+    return true;
+}
 static void finish_walk(int reason,bool stop_native){
     if(shared->walk_state!=WALK_ACTIVE)return;
     // Never cancel a new scene's or a different character's path.
@@ -54,12 +68,13 @@ static void finish_walk(int reason,bool stop_native){
 }
 static int start_walk(int direction){
     if(direction==0){finish_walk(WALK_MANUAL,true);return 0;}
-    double x,y;if(!walk_destination(direction,&x,&y))return 4;
+    double x,y;bool exit=walk_exit_target(direction,&x,&y);
+    if(!exit&&!walk_destination(direction,&x,&y))return 4;
     if(shared->walk_state==WALK_ACTIVE)return 7;
     RV player=find_instance("o_player");
     if(!valid_object(player)||!supply_safe(player)){release_value(&player);return 7;}
-    shared->walk_direction=direction;shared->walk_x=x;shared->walk_y=y;shared->walk_phase=0;
-    if(fabs(shared->player_x-x)<2&&fabs(shared->player_y-y)<2){
+    shared->walk_direction=direction;shared->walk_x=x;shared->walk_y=y;shared->walk_phase=exit?1:0;
+    if(!exit&&fabs(shared->player_x-x)<2&&fabs(shared->player_y-y)<2){
         if(!walk_crosses_map(direction)){shared->walk_state=WALK_ARRIVED;release_value(&player);return 0;}
         walk_target(direction,shared->map_w,shared->map_h,true,&shared->walk_x,&shared->walk_y);shared->walk_phase=1;
     }
@@ -69,6 +84,22 @@ static int start_walk(int direction){
     // so native movement sees the same conditions as an ordinary ground click.
     walk_dispatch_pending=true;
     release_value(&player);shared->walk_state=WALK_ACTIVE;return 0;
+}
+static int request_walk(int direction){
+    if(shared->walk_state==WALK_ACTIVE&&direction!=0){
+        bool arrived=false;
+        if(walk_cardinal(direction)!=0&&walk_cardinal(direction)==walk_cardinal(shared->walk_direction)&&shared->walk_phase==0&&!walk_dispatch_pending&&
+           shared->scene_ready&&walk_scene==shared->scene_generation&&walk_window==shared->window_generation){
+            RV player=find_instance("o_player");
+            arrived=valid_object(player)&&member_number(player,"id")==walk_player_id&&supply_safe(player)&&
+                fabs(member_number(player,"x")-shared->walk_x)<2&&fabs(member_number(player,"y")-shared->walk_y)<2;
+            release_value(&player);
+        }
+        // Handle the short gap between native arrival and the next timer sample.
+        finish_walk(arrived?WALK_ARRIVED:WALK_MANUAL,!arrived);
+        if(!arrived)return 0;
+    }
+    return start_walk(direction);
 }
 static void reconcile_walk(uint32_t reasons){
     if(shared->walk_state!=WALK_ACTIVE)return;
@@ -94,7 +125,7 @@ static void reconcile_walk(uint32_t reasons){
     uint64_t now=GetTickCount64();
     if(fabs(x-walk_last_x)>1||fabs(y-walk_last_y)>1){walk_progress=now;walk_last_x=x;walk_last_y=y;}
     if(idle&&fabs(x-shared->walk_x)<2&&fabs(y-shared->walk_y)<2){
-        if(!walk_crosses_map(shared->walk_direction)){finish_walk(WALK_ARRIVED,false);return;}
+        if(shared->walk_phase==0&&!walk_crosses_map(shared->walk_direction)){finish_walk(WALK_ARRIVED,false);return;}
         if(shared->walk_phase==0){
             if(!safe){finish_walk(WALK_BLOCKED,false);return;}
             if(!walk_target(shared->walk_direction,shared->map_w,shared->map_h,true,&shared->walk_x,&shared->walk_y)){finish_walk(WALK_BLOCKED,false);return;}
@@ -122,8 +153,7 @@ static bool handle_walk_key(unsigned key,bool repeat,bool modifiers,bool foregro
     int direction=walk_key_direction(key);
     if(!direction||!shared->walk_keys_enabled||modifiers||!foreground||!lease_live||!shared->ready||!shared->scene_ready||(shared->ui_flags&~8u))return false;
     if(repeat)return true; // A held key never restarts an interrupted journey.
-    if(shared->walk_state==WALK_ACTIVE){finish_walk(WALK_MANUAL,true);return true;}
-    int result=start_walk(direction);
+    int result=request_walk(direction);
     if(result){
         RV player=find_instance("o_player");
         shared->walk_state=valid_object(player)&&walk_threat(player)?WALK_THREAT:WALK_BLOCKED;

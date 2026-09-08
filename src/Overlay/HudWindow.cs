@@ -19,6 +19,7 @@ public sealed class HudWindow : Window
     private readonly Button walkKeys=new(){FontSize=11,Padding=new Thickness(5,0,5,0),Focusable=false,MinWidth=132};
     private readonly List<(Button Button,int Direction)> navigation=[];
     private bool walking;
+    private int speedShown;
     private nint handle;
     private double dpi=1,viewportWidth=1920,viewportHeight=1080;
     private int originX,originY;
@@ -57,7 +58,7 @@ public sealed class HudWindow : Window
         for(int i=0;i<3;i++){compass.RowDefinitions.Add(new RowDefinition());compass.ColumnDefinitions.Add(new ColumnDefinition());}
         foreach(var (direction,symbol,name,row,column) in new[]{(6,"↖","走到左上角",0,0),(1,"↑","向上跨图",0,1),(7,"↗","走到右上角",0,2),(3,"←","向左跨图",1,0),(5,"◎","走到地图中心",1,1),(4,"→","向右跨图",1,2),(8,"↙","走到左下角",2,0),(2,"↓","向下跨图",2,1),(9,"↘","走到右下角",2,2)}){
             var button=new Button{Content=symbol,FontSize=22,Padding=new Thickness(0),Margin=new Thickness(1),ToolTip=name};
-            AutomationProperties.SetName(button,name);button.Click+=(_,_)=>coordinator.Walk(walking?0:direction);
+            AutomationProperties.SetName(button,name);button.Click+=(_,_)=>coordinator.Walk(direction);
             Grid.SetRow(button,row);Grid.SetColumn(button,column);compass.Children.Add(button);navigation.Add((button,direction));
         }
         actionArea.Children.Add(compass);Grid.SetColumn(actions,1);actionArea.Children.Add(actions);
@@ -67,7 +68,7 @@ public sealed class HudWindow : Window
         labels=Add("eye-shield","常显","物品常显 · Ctrl+Alt+L",0,owner.ToggleLabels);
         Add("eye-target","地图中心","镜头移到地图中心 · Ctrl+Alt+C",2,()=>owner.RunAction(EngineCommand.Center));
         Add("crosshair","角色视角","镜头回到角色 · Ctrl+Alt+R",2,()=>owner.RunAction(EngineCommand.Player));
-        speed=Add("fast-forward-button","1×","选择速度",0,()=>OpenSpeed());
+        speed=Add("speed-normal","1×","正常 → 加速 2× → 急速 3×，点击直接切换",0,()=>owner.ChooseSpeed(SpeedControl.Next(owner.PreferredSpeed)));
         Add("save-backup","备份","一键备份已落盘的存档",0,()=>owner.Backup(false));
         Add("save-history","存档","查看历史备份与还原",0,owner.OpenSaves);
         Add("gears","设置","设置与快捷键",0,owner.OpenSettings);
@@ -128,7 +129,7 @@ public sealed class HudWindow : Window
     {
         var grid=HudGeometry.Grid(actions.ActualWidth,actions.ActualHeight,cells.Count);actions.Columns=grid.Columns;actions.Rows=grid.Rows;
         foreach(var cell in cells){cell.Icon.Width=cell.Icon.Height=Math.Clamp(grid.CellHeight-18,12,30);cell.Label.Visibility=grid.CellWidth>=80?Visibility.Visible:Visibility.Collapsed;cell.Label.FontSize=grid.CellWidth<100?11:12;}
-        cells[6].Icon.Visibility=grid.CellWidth>=60?Visibility.Visible:Visibility.Collapsed;
+        cells[6].Icon.Visibility=Visibility.Visible;
     }
     private void AddSupplyMenu(Button button,bool water)
     {
@@ -136,12 +137,6 @@ public sealed class HudWindow : Window
         menu.Opened+=(_,_)=>{openMenus++;option.IsChecked=water?coordinator.Preferences.AutoDrink:coordinator.Preferences.AutoTorch;};menu.Closed+=(_,_)=>openMenus=Math.Max(0,openMenus-1);
         option.Click+=(_,_)=>{if(water)coordinator.Preferences.AutoDrink=option.IsChecked;else coordinator.Preferences.AutoTorch=option.IsChecked;coordinator.SavePreferences();};menu.Items.Add(option);
         var settings=new MenuItem{Header="补给设置与阈值"};settings.Click+=(_,_)=>coordinator.OpenSettings();menu.Items.Add(settings);button.ContextMenu=menu;
-    }
-    private void OpenSpeed()
-    {
-        var menu=new ContextMenu{PlacementTarget=speed,Placement=PlacementMode.Top};
-        menu.Opened+=(_,_)=>openMenus++;menu.Closed+=(_,_)=>openMenus=Math.Max(0,openMenus-1);
-        for(int n=1;n<=4;n++){int choice=n;var item=new MenuItem{Header=$"{n}×",IsCheckable=true,IsChecked=coordinator.PreferredSpeed==n};item.Click+=(_,_)=>coordinator.ChooseSpeed(choice);menu.Items.Add(item);}menu.IsOpen=true;
     }
     public void Update(EngineState? state,bool foreground)
     {
@@ -153,7 +148,7 @@ public sealed class HudWindow : Window
         bool keysActive=keysWanted&&state is {Ready:true,Fresh:true,SceneReady:true,WalkKeysEnabled:true}&&foreground&&(state.UiFlags&~8u)==0;
         walkKeys.Content=keysWanted?(keysActive?"方向键自动移动：开":"方向键自动移动：待命"):"方向键自动移动：关";
         walkKeys.Foreground=keysActive?Active:Muted;walkKeys.BorderBrush=keysWanted?Active:Muted;
-        walkKeys.ToolTip="开启后轻按 ↑ ↓ ← →，沿人物所在列或行走到地图边缘后停下。\n再次按方向键停步；长按不重复。仅游戏前台生效，面板内保留原按键操作。\n关闭开关会停止本模式的行走。";
+        walkKeys.ToolTip="开启后轻按 ↑ ↓ ← →，沿人物所在列或行走到边缘；贴近出口后再按同方向切图。\n途中再按方向键停步；长按不重复。仅游戏前台生效，面板内保留原按键操作。\n关闭开关会停止本模式的行走。";
         double[] readings=[state?.Hunger??double.NaN,state?.Thirst??double.NaN,state?.Pain??double.NaN,state?.Intoxication??double.NaN];
         for(int i=0;i<4;i++){bool valid=current&&(state!.VitalValid&(1u<<i))!=0&&double.IsFinite(readings[i]);values[i].Text=valid?$"{readings[i]:0}%":"—";}
         cells[0].Button.ToolTip=!current?"等待进入游戏":state!.VisorState<0?"当前头盔没有可开合面甲":state.VisorState==1?"面甲已打开 · 点击关闭":"面甲已关闭 · 点击打开";
@@ -164,6 +159,12 @@ public sealed class HudWindow : Window
         labels.BorderBrush=coordinator.Preferences.ShowLabels?Active:Muted;
         labels.ToolTip=coordinator.Preferences.ShowLabels?(current&&state!.HighlightApplied?"物品常显已开启":"物品常显已记住，等待游戏恢复"):"开启物品常显 · Ctrl+Alt+L";
         cells[6].Label.Visibility=Visibility.Visible;cells[6].Label.Text=$"{coordinator.PreferredSpeed}×";
+        if(speedShown!=coordinator.PreferredSpeed){
+            speedShown=coordinator.PreferredSpeed;
+            ((System.Windows.Shapes.Path)cells[6].Icon).Data=((System.Windows.Shapes.Path)HudIcon.Create(SpeedControl.Icon(speedShown))).Data;
+        }
+        speed.ToolTip=$"当前：{SpeedControl.Name(speedShown)} {speedShown}×\n点击切换：{SpeedControl.Name(SpeedControl.Next(speedShown))} {SpeedControl.Next(speedShown)}×\n正常 → 加速 → 急速 → 正常，不弹出菜单";
+        AutomationProperties.SetName(speed,$"速度：{SpeedControl.Name(speedShown)} {speedShown}倍");
         speed.Foreground=current&&state!.SuspendReasons==0&&Math.Abs(state.Multiplier-coordinator.PreferredSpeed)<.01?Active:Muted;
         cells[7].Button.IsEnabled=!coordinator.Saves.Busy;
         walking=current&&state!.WalkState==1;

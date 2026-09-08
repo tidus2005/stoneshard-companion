@@ -10,6 +10,10 @@ internal static class OfflineChecks
     public static async Task Run(string root,string? saveRunner=null)
     {
         IntentChecks.Run();
+        int cycle=1;
+        for(int i=0;i<30;i++){cycle=SpeedControl.Next(cycle);Check(cycle==((i+1)%3)+1,"HUD speed cycles 1, 2, 3 without a fourth step");}
+        Check(SpeedControl.Next(4)==1&&SpeedControl.Next(0)==1,"legacy or invalid HUD speed returns to normal");
+        Check(new[]{1,2,3}.Select(SpeedControl.Icon).Distinct().Count()==3&&SpeedControl.Name(1)=="正常"&&SpeedControl.Name(2)=="加速"&&SpeedControl.Name(3)=="急速","each HUD speed has its own icon and caption");
         foreach(var (vw,vh) in new[]{(1920d,1080d),(1280d,720d),(800d,600d),(200d,100d)}){
             var rect=HudGeometry.Clamp(new(40,50,568,178),vw,vh);
             foreach(var corner in Enum.GetValues<HudCorner>())foreach(double dx in new[]{-3000d,-120,0,140,3000})foreach(double dy in new[]{-3000d,-100,0,200,3000}){
@@ -45,7 +49,7 @@ internal static class OfflineChecks
         BitConverter.GetBytes(12345ul).CopyTo(packet,3952);BitConverter.GetBytes(1u).CopyTo(packet,3960);
         BitConverter.GetBytes(1u).CopyTo(packet,3964);
         var decoded=EngineBridge.DecodeSnapshot(packet);
-        Check(decoded.Ready&&decoded.Fresh&&decoded.SceneReady&&decoded.Capabilities==64&&decoded.WalkDirection==4&&decoded.WalkPhase==1&&decoded.WalkKeysEnabled&&decoded.WalkX==2327&&decoded.WalkY==1183&&decoded.LabelDrawOverrides==12345,"v6 snapshot decodes keyboard mode and preserves existing tail fields");
+        Check(decoded.Ready&&decoded.Fresh&&decoded.SceneReady&&decoded.Capabilities==64&&decoded.WalkDirection==4&&decoded.WalkPhase==1&&decoded.WalkKeysEnabled&&decoded.WalkX==2327&&decoded.WalkY==1183&&decoded.LabelDrawOverrides==12345,"v7 snapshot decodes keyboard mode and preserves existing tail fields");
         Check((decoded with{WalkState=2,WalkDirection=6}).WalkStatus=="已到达左上角"&&(decoded with{WalkState=2,WalkDirection=11}).WalkStatus=="已到达人物正上方边缘","corner and relative arrival show their real destination");
         Check((decoded with{WalkPhase=0,WalkDirection=14}).WalkStatus.Contains("人物正右方边缘")&&(decoded with{WalkPhase=1}).WalkStatus.Contains("相邻地图"),"keyboard and crossing routes have distinct progress");
         await Fails(()=>Task.Run(()=>EngineBridge.DecodeSnapshot(new byte[3960])),"数据不完整");
