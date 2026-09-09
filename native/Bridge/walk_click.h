@@ -4,7 +4,9 @@ static bool exit_click_point(int direction,double px,double py,double cx,double 
     int d=direction>=11&&direction<=14?direction-10:direction;
     if(d<1||d>4||!isfinite(px)||!isfinite(py)||!isfinite(cx)||!isfinite(cy)||!isfinite(cw)||!isfinite(ch)||cw<=0||ch<=0||width<=0||height<=0)return false;
     double scale=fmin(width/cw,height/ch),ox=(width-cw*scale)/2,oy=(height-ch*scale)/2;
-    double tx=px+(d==3?-26:d==4?26:0),ty=py+(d==1?-26:d==2?26:0);
+    // The upper adjacent cell overlaps the player's head at its center.
+    // Aim near that cell's far edge (39 -> 3), still inside the exit tile.
+    double tx=px+(d==3?-26:d==4?26:0),ty=py+(d==1?-36:d==2?26:0);
     *x=ox+(tx-cx)*scale;*y=oy+(ty-cy)*scale;
     return tx>=cx&&ty>=cy&&tx<cx+cw&&ty<cy+ch&&*x>=1&&*y>=1&&*x<width-1&&*y<height-1;
 }
@@ -30,7 +32,7 @@ static bool native_pump_exit_click(void){
     INPUT event={0};event.type=INPUT_MOUSE;event.mi.dwExtraInfo=WALK_MOUSE_MARKER;
     event.mi.dwFlags=exit_mouse_phase==1?MOUSEEVENTF_LEFTDOWN:MOUSEEVENTF_LEFTUP;
     if(SendInput(1,&event,sizeof(event))!=1){native_cancel_exit_click();return false;}
-    if(exit_mouse_phase==1){exit_mouse_phase=2;exit_mouse_due=GetTickCount64()+100;}else exit_mouse_phase=0;
+    if(exit_mouse_phase==1){exit_mouse_phase=2;exit_mouse_due=GetTickCount64()+70;}else exit_mouse_phase=0;
     return true;
 }
 static bool native_click_exit(RV player,int direction){
@@ -51,7 +53,7 @@ static bool native_click_exit(RV player,int direction){
     move.mi.dx=(LONG)(((double)(point.x-vx)+.5)*65536/vw);move.mi.dy=(LONG)(((double)(point.y-vy)+.5)*65536/vh);
     move.mi.dwFlags=MOUSEEVENTF_MOVE|MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_VIRTUALDESK;
     if(SendInput(1,&move,sizeof(move))!=1)return false;
-    exit_mouse_point=point;exit_mouse_phase=1;exit_mouse_due=GetTickCount64()+150;
+    exit_mouse_point=point;exit_mouse_phase=1;exit_mouse_due=GetTickCount64()+70;
     return true;
 }
 #endif

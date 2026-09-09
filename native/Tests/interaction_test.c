@@ -62,7 +62,7 @@ static int begin(int d){int result=start_walk(d);test_now+=(shared->walk_phase==
 int main(void){
     double mx,my;
     for(int d=1;d<=4;d++){
-        check(exit_click_point(d,507,767,27,497,960,540,1920,1080,&mx,&my)&&mx==(d==3?908:d==4?1012:960)&&my==(d==1?488:d==2?592:540),"adjacent cell projects correctly in all four directions at 2x scale");
+        check(exit_click_point(d,507,767,27,497,960,540,1920,1080,&mx,&my)&&mx==(d==3?908:d==4?1012:960)&&my==(d==1?468:d==2?592:540),"adjacent cell projects correctly in all four directions at 2x scale");
         check(exit_click_point(d+10,507,767,27,497,960,540,1280,720,&mx,&my),"keyboard projection supports fractional VM scaling");
     }
     check(!exit_click_point(1,0,0,0,0,960,540,1920,1080,&mx,&my),"offscreen adjacent cell is never clicked");
@@ -188,7 +188,7 @@ int main(void){
     reset();set_walk_keys(true);begin(6);set_walk_keys(false);
     check(shared->walk_state==WALK_ACTIVE&&stop_calls==0,"disabling keyboard mode does not cancel independent grid route");
     reset();set_walk_keys(true);begin(11);shared->scene_generation++;reconcile_walk(0);
-    handle_walk_key(VK_UP,true,false,true,true);test_now+=300;reconcile_walk(0);
+    handle_walk_key(VK_UP,true,false,true,true);test_now+=119;reconcile_walk(0);
     check(shared->walk_keys_enabled&&shared->walk_state==WALK_SCENE&&move_calls==1&&stop_calls==0,"map change retains mode but held key never restarts in new scene");
     reset();set_walk_keys(true);begin(11);idle=false;enemy=true;reconcile_walk(0);
     check(shared->walk_state==WALK_THREAT&&stop_calls==1&&move_calls==1,"relative journey stops when a new enemy appears");
@@ -211,9 +211,9 @@ int main(void){
     }
     reset();set_walk_keys(true);begin(11);shared->player_x=px=sent_x;shared->player_y=py=sent_y;reconcile_walk(0);
     check(shared->walk_state==WALK_ACTIVE&&walk_dispatch_pending&&move_calls==1,"relative arrival queues automatic exit");
-    handle_walk_key(VK_UP,true,false,true,true);test_now+=300;reconcile_walk(0);
+    handle_walk_key(VK_UP,true,false,true,true);test_now+=119;reconcile_walk(0);
     check(exit_calls==0&&walk_dispatch_pending,"exit waits for overlay polling to clear target");
-    test_now+=350;reconcile_walk(0);
+    test_now+=1;reconcile_walk(0);
     check(move_calls==1&&exit_calls==1&&shared->walk_state==WALK_ACTIVE,"held key does not block automatic exit");
     test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);
     check(move_calls==1&&exit_calls==1&&shared->walk_phase==1&&click_y==13,"automatic exit requires no second physical press");

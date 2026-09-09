@@ -20,6 +20,9 @@ public sealed class SaveWindow : Window
     private readonly Button confirm=new();
     private SaveArchive? pending;
     private bool loadingHistory,historyQueued,closed;
+    private readonly Image preview=new(){Width=220,MaxHeight=190,Stretch=Stretch.Uniform};
+    private readonly TextBlock previewInfo=new(){Text="选中备份查看存档截图",TextWrapping=TextWrapping.Wrap,Foreground=Brushes.Silver,Margin=new Thickness(8)};
+    private int previewGeneration;
     public SaveWindow(MainWindow owner)
     {
         coordinator=owner;Title=$"晶石助手 v{App.Version} · 存档管理";Width=840;Height=680;MinWidth=520;MinHeight=500;WindowStartupLocation=WindowStartupLocation.CenterScreen;
@@ -44,7 +47,9 @@ public sealed class SaveWindow : Window
         var copyStatus=new Button{Content="复制状态与路径",HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,0,0,6)};
         copyStatus.Click+=(_,_)=>{try{Clipboard.SetText($"{Title}\n{status.Text}\n{latest.Text}\n{locations.Text}");}catch(System.Runtime.InteropServices.ExternalException){status.Text="剪贴板正在被占用，请稍后重试。";}};
         state.Children.Add(copyStatus);
-        Grid.SetRow(history,3);body.Children.Add(history);
+        var archiveRow=new Grid();archiveRow.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});archiveRow.ColumnDefinitions.Add(new(){Width=new GridLength(240)});
+        archiveRow.Children.Add(history);var previewPanel=new StackPanel{Margin=new Thickness(8)};previewPanel.Children.Add(preview);previewPanel.Children.Add(previewInfo);Grid.SetColumn(previewPanel,1);archiveRow.Children.Add(previewPanel);Grid.SetRow(archiveRow,3);body.Children.Add(archiveRow);
+        history.SelectionChanged+=async(_,_)=>await LoadPreview();
         var restoreRow=new WrapPanel{Margin=new Thickness(0,8,0,0)};Grid.SetRow(restoreRow,4);body.Children.Add(restoreRow);
         Add(restoreRow,"还原选中的备份",()=>{
             if(history.SelectedItem is not SaveArchive archive){status.Text="先在列表中选择一个备份。";return;}
@@ -63,6 +68,16 @@ public sealed class SaveWindow : Window
         Closing+=(_,e)=>{if(owner.Saves.Busy){e.Cancel=true;status.Text="存档操作正在进行，请完成后关闭。";}};
         Closed+=(_,_)=>closed=true;
         Refresh();
+    }
+    private async Task LoadPreview(){
+        int generation=++previewGeneration;preview.Source=null;
+        if(history.SelectedItem is not SaveArchive archive)return;previewInfo.Text="读取存档截图…";
+        try{
+            var data=await Task.Run(()=>SavePreviews.ReadLatest(archive.Path));if(closed||generation!=previewGeneration)return;
+            if(data is null){previewInfo.Text="此备份没有游戏原生截图";return;}
+            using var stream=new System.IO.MemoryStream(data.Image);var bitmap=new System.Windows.Media.Imaging.BitmapImage();bitmap.BeginInit();bitmap.CacheOption=System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;bitmap.DecodePixelWidth=440;bitmap.StreamSource=stream;bitmap.EndInit();bitmap.Freeze();preview.Source=bitmap;
+            previewInfo.Text=$"备份中最近一次存档\n{data.SavedAt.LocalDateTime:MM-dd HH:mm:ss}\n{data.Slot.Replace("/preview.png","")}\n截图时间可能早于备份时间。";
+        }catch(Exception ex) when(ex is System.IO.IOException or System.IO.InvalidDataException or NotSupportedException or System.FormatException){if(generation==previewGeneration)previewInfo.Text="无法读取截图；备份仍可选择。";}
     }
     private Button Add(Panel panel,string text,Action action)
     {

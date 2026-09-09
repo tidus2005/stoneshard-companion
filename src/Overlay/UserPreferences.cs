@@ -5,6 +5,16 @@ namespace StoneshardCompanion;
 
 public sealed class UserPreferences
 {
+    public double HudOpacity {get;set;}=.75;
+    public double StatsOpacity {get;set;}=.55;
+    public bool HudBorder {get;set;}
+    public bool StatsBorder {get;set;}
+    public double StatsWidth {get;set;}=290;
+    public double StatsHeight {get;set;}=380;
+    public double StatsFontSize {get;set;}=12;
+    public double HungerPerHour {get;set;}
+    public double ThirstPerHour {get;set;}
+    public double DurabilityWarning {get;set;}=25;
     public bool ShowStats {get;set;}=true;
     public bool StatsFavoritesOnly {get;set;}
     public HashSet<string> FavoriteStats {get;set;}=[];
@@ -35,6 +45,11 @@ public sealed class UserPreferences
     {
         try {
             var p=JsonSerializer.Deserialize<UserPreferences>(File.ReadAllText(FileName))??new();
+            static double Clamp(double v,double min,double max,double fallback)=>double.IsFinite(v)?Math.Clamp(v,min,max):fallback;
+            p.HungerPerHour=Clamp(p.HungerPerHour,0,50,0);p.ThirstPerHour=Clamp(p.ThirstPerHour,0,50,0);
+            p.HudOpacity=Clamp(p.HudOpacity,0,1,.75);p.StatsOpacity=Clamp(p.StatsOpacity,0,1,.55);
+            p.StatsWidth=Clamp(p.StatsWidth,250,600,290);p.StatsHeight=Clamp(p.StatsHeight,200,900,380);
+            p.StatsFontSize=Clamp(p.StatsFontSize,10,20,12);p.DurabilityWarning=Clamp(p.DurabilityWarning,5,75,25);
             p.FavoriteStats=(p.FavoriteStats??[]).Where(k=>StatsCatalog.All.Any(d=>d.Key==k)).ToHashSet(StringComparer.Ordinal);
             p.FodderMaterials=(p.FodderMaterials??[]).Where(FodderPolicy.ValidKey).Take(32).ToHashSet(StringComparer.Ordinal);
             if(!double.IsFinite(p.StatsX)||!double.IsFinite(p.StatsY))p.StatsPlaced=false;

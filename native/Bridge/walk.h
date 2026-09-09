@@ -150,9 +150,9 @@ static void reconcile_walk(uint32_t reasons){
     if(walk_dispatch_pending){
         uint64_t elapsed=GetTickCount64()-walk_started;
         if(elapsed>(shared->walk_direction==5?8000:2000)){release_value(&player);finish_walk(WALK_TIMEOUT,false);return;}
-        // The overlay polls every 250 ms; allow it to hide panels over the exit.
+        // The overlay polls every 75 ms; allow it to hide panels over the exit.
         // Obstruction is still checked at the actual click, never clicked through.
-        if(elapsed<(shared->walk_phase==1?600:150)||walk_modifiers_down()){release_value(&player);return;}
+        if(elapsed<(shared->walk_phase==1?120:75)||walk_modifiers_down()){release_value(&player);return;}
         if(!walk_safe(player)){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}
         if(shared->walk_direction==5){
             double cx,cy;walk_target(5,shared->map_w,shared->map_h,false,&cx,&cy);
@@ -206,7 +206,9 @@ static void reconcile_walk(uint32_t reasons){
         if(now-walk_progress>2000)finish_walk(WALK_BLOCKED,false);
         return;
     }
-    if(idle&&now-walk_started>700&&(!isfinite(path)||path<0)){finish_walk(WALK_BLOCKED,false);return;}
+    // Native movement can report idle between cells while still following a
+    // route. Measure stalled time since the last movement, not route startup.
+    if(idle&&now-walk_progress>700&&(!isfinite(path)||path<0)){finish_walk(WALK_BLOCKED,false);return;}
     if(now-walk_progress>8000||now-walk_started>180000)finish_walk(WALK_TIMEOUT,true);
     if(shared->walk_state==WALK_ACTIVE)shared->supply_flags&=~3u;
 }

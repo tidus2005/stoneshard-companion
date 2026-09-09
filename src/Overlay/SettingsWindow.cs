@@ -16,6 +16,18 @@ public sealed class SettingsWindow : Window
         var panel=new StackPanel{Margin=new Thickness(26)};Content=new ScrollViewer{Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
         panel.Children.Add(new TextBlock{Text=$"行旅辅助 · v{App.Version}",FontSize=24,Margin=new Thickness(0,0,0,12)});
         status=new TextBlock{Text=owner.Status,TextWrapping=TextWrapping.Wrap,Foreground=Brushes.LightGray};panel.Children.Add(status);
+        AddText("浮窗外观（即时生效）",16);
+        Adjust("行旅辅助背景不透明度",0,100,owner.Preferences.HudOpacity*100,v=>owner.Preferences.HudOpacity=v/100,"%");
+        Check("行旅辅助显示边框",()=>owner.Preferences.HudBorder,v=>owner.Preferences.HudBorder=v);
+        Adjust("属性面板背景不透明度",0,100,owner.Preferences.StatsOpacity*100,v=>owner.Preferences.StatsOpacity=v/100,"%");
+        Check("属性面板显示边框",()=>owner.Preferences.StatsBorder,v=>owner.Preferences.StatsBorder=v);
+        Adjust("属性面板宽度",250,600,owner.Preferences.StatsWidth,v=>owner.Preferences.StatsWidth=v," px");
+        Adjust("属性面板高度",200,900,owner.Preferences.StatsHeight,v=>owner.Preferences.StatsHeight=v," px");
+        Adjust("属性文字大小",10,20,owner.Preferences.StatsFontSize,v=>owner.Preferences.StatsFontSize=v," px");
+        AddText("0% 为透明背景，文字保持清晰；标题仍可拖动。全部／特别关注可进一步减少遮挡。");
+        Adjust("装备耐久预警线",5,75,owner.Preferences.DurabilityWarning,v=>owner.Preferences.DurabilityWarning=v,"%");
+        Adjust("饥饿每游戏小时增长（0 = 实测）",0,20,owner.Preferences.HungerPerHour,v=>owner.Preferences.HungerPerHour=v," 个百分点");
+        Adjust("口渴每游戏小时增长（0 = 实测）",0,20,owner.Preferences.ThirstPerHour,v=>owner.Preferences.ThirstPerHour=v," 个百分点");
         Check("自动更新（GitHub 正式版；游戏关闭后安装并重启）",()=>owner.Preferences.AutoUpdate,v=>owner.Preferences.AutoUpdate=v);
         updateStatus.Text=owner.Updater.Status;panel.Children.Add(updateStatus);
         Button("检查更新",()=>_=owner.Updater.CheckAsync(true));
@@ -41,6 +53,11 @@ public sealed class SettingsWindow : Window
         Button("存档管理",owner.OpenSaves);Button("一键备份已落盘的存档",()=>owner.Backup(false));Button("恢复默认面板位置与大小",owner.ResetLayout);Button("停止并恢复正常",owner.Reset);Button("退出助手",owner.RequestExit);
         AddText("图标：Game-icons.net · CC BY 3.0，作者与来源见随附 ATTRIBUTION.md。",11);
         void AddText(string text,int size=13)=>panel.Children.Add(new TextBlock{Text=text,TextWrapping=TextWrapping.Wrap,FontSize=size,LineHeight=23,Margin=new Thickness(0,14,0,8),Foreground=Brushes.LightGray});
+        void Adjust(string label,double min,double max,double value,Action<double> change,string unit){
+            var caption=new TextBlock{Text=$"{label}：{value:0}{unit}",Margin=new Thickness(0,10,0,3)};panel.Children.Add(caption);
+            var control=new Slider{Minimum=min,Maximum=max,Value=value,TickFrequency=1,IsSnapToTickEnabled=true};panel.Children.Add(control);
+            control.ValueChanged+=(_,_)=>{change(control.Value);caption.Text=$"{label}：{control.Value:0}{unit}";owner.SavePreferences();};
+        }
         void Button(string title,Action action){var b=new Button{Content=title,Margin=new Thickness(0,8,0,0)};b.Click+=(_,_)=>action();panel.Children.Add(b);}
         void Check(string text,Func<bool> value,Action<bool> change){var check=new CheckBox{Content=new TextBlock{Text=text,TextWrapping=TextWrapping.Wrap},IsChecked=value(),Foreground=Brushes.Wheat,Margin=new Thickness(0,12,0,0)};check.Click+=(_,_)=>{change(check.IsChecked==true);owner.SavePreferences();};checks.Add((check,value));panel.Children.Add(check);}
     }

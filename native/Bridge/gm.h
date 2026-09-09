@@ -172,10 +172,13 @@ static void refresh_scene(void){
 // never infer a field from a numerical offset or keep dynamic string pointers.
 static void diagnostic_value(char*,size_t,const char*,RV);
 static void inspect_variables(double page){
-    if(page>=1000&&page<2000){
-        RV map=get_global("characterDataMap");char* out=shared->diagnostic;out[0]=0;
+    if((page>=1000&&page<2000)||(page>=3000&&page<5000)){
+        RV map=get_global("characterDataMap");int map_page=(int)page-1000;
+        if(page>=3000){release_value(&map);map_page=0;int n=(int)page-3000;
+            if(n==999)map=get_global("timeDataMap");else if(n>=1000&&n<1100){map=get_global("consum_stat_data");if(n>1000){RV key=string_value("grill_stick"),args[2]={map,key},row=call_builtin(0x51e4510,2,args);release_value(&map);map=row;}}else{RV args[2]={numeric(4770),numeric(n%256)},id=call_builtin(0x51f2980,2,args),item=instance_from_id(id);map=get_member(item,n<256?"data":n<512?"attributes_value_map":"attributes_data");release_value(&id);release_value(&item);}}
+        char* out=shared->diagnostic;out[0]=0;
         if(!isfinite(number(map)))return;
-        RV key=call_builtin(0x51e3ff0,1,&map);int first=((int)page-1000)*28;
+        RV key=call_builtin(0x51e3ff0,1,&map);int first=map_page*28;
         for(int i=0;i<2000&&(key.kind&0xffffff)!=5;i++){
             RV args[2]={map,key};
             if(i>=first&&i<first+28){RV value=call_builtin(0x51e4510,2,args);diagnostic_value(out,sizeof(shared->diagnostic),text_value(key),value);release_value(&value);}
@@ -186,6 +189,7 @@ static void inspect_variables(double page){
     }
     bool globals=page<0;int first=(int)(globals?-page-1:page)*28;
     RV obj=globals?(RV){.ptr=global_scope,.kind=6}:find_instance("o_player");
+    if(page>=2000&&page<2300){const char* objects[]={"o_inventory","o_craftingConsumsMenu","o_inv_consum"};int p=(int)page-2000;release_value(&obj);obj=find_instance(objects[p/100]);first=(p%100)*28;}
     if(page>=10000){int encoded=(int)page-10000;RV args[2]={numeric(encoded/100),numeric(0)};obj=instance_from_id(call_builtin(0x51f2980,2,args));first=(encoded%100)*28;}
     char* out=shared->diagnostic;out[0]=0;if(!valid_object(obj))return;
     RV names=call_builtin(0x51ee150,1,&obj);

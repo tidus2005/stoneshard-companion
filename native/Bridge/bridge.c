@@ -210,7 +210,7 @@ __declspec(dllexport) DWORD WINAPI BridgeStart(void* ignored) {
     // Startup can expose a window before the frame manager is initialized.
     // Do not publish a mapping until a valid baseline exists; allow a later retry.
     baseline=get_speed();if(!isfinite(baseline)||baseline<1 || baseline>240)return start_failed(15);
-    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v10.%lu",GetCurrentProcessId());
+    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v11.%lu",GetCurrentProcessId());
     mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,NULL,PAGE_READWRITE,0,65536,name);
     if(!mapping)return start_failed(12);
     if(GetLastError()==ERROR_ALREADY_EXISTS)return start_failed(13);

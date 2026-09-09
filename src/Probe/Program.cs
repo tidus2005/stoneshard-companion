@@ -30,7 +30,7 @@ try{
         return;
     }
     if(args.Length>1&&args[1]=="Status"){
-        using var map=System.IO.MemoryMappedFiles.MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v10.{session.Pid}",System.IO.MemoryMappedFiles.MemoryMappedFileRights.Read);
+        using var map=System.IO.MemoryMappedFiles.MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v11.{session.Pid}",System.IO.MemoryMappedFiles.MemoryMappedFileRights.Read);
         using var view=map.CreateViewAccessor(0,65536,System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read);
         Console.WriteLine(JsonSerializer.Serialize(new{sceneReady=view.ReadInt32(3772),ready=view.ReadInt32(12),preferred=view.ReadDouble(3792),suspend=view.ReadUInt32(3800),uiFlags=view.ReadUInt32(3804),updated=view.ReadInt64(3872),now=Environment.TickCount64,foreground=session.IsForeground,target=view.ReadDouble(80),cameraMode=view.ReadInt32(160),visor=view.ReadInt32(164),samples=view.ReadUInt64(176),autoCenter=view.ReadInt32(3768)==1,cameraX=view.ReadDouble(96),cameraY=view.ReadDouble(104),cameraWidth=view.ReadDouble(112),cameraHeight=view.ReadDouble(120),mapWidth=view.ReadDouble(128),mapHeight=view.ReadDouble(136),playerX=view.ReadDouble(144),playerY=view.ReadDouble(152)},new JsonSerializerOptions{WriteIndented=true}));return;
     }
@@ -43,6 +43,27 @@ try{
     var library=Path.GetFullPath(args.Length>3?args[3]:"artifacts/native/StoneshardBridge.dll");
     if(args.Length>1&&args[1]=="Verify"){await Verification.Run(session,library,args.Length>4?args[4]:"artifacts/verification-v031.json");return;}
     using var bridge=await EngineBridge.ConnectAsync(session,library);
+    if(args.Length>1&&args[1]=="InspectItems"){
+        for(int i=0;i<256;i++){
+            var item=await bridge.SendAsync(EngineCommand.Inspect,3000+i);
+            if(string.IsNullOrWhiteSpace(item.Diagnostic))break;
+            if(item.Diagnostic.Contains("grill_stick")||item.Diagnostic.Contains("blueberry")||item.Diagnostic.Contains("horsetail")){
+                Console.WriteLine($"ITEM {i}: {item.Diagnostic}");
+                var attributes=await bridge.SendAsync(EngineCommand.Inspect,3512+i);Console.WriteLine("ATTRIBUTES: "+attributes.Diagnostic);
+            }
+        }
+        return;
+    }
+    if(args.Length>1&&args[1]=="InspectMap"){
+        var output=new System.Text.StringBuilder();
+        for(int page=0;page<72;page++){
+            var snapshot=await bridge.SendAsync(EngineCommand.Inspect,1000+page);
+            if(string.IsNullOrWhiteSpace(snapshot.Diagnostic))break;
+            output.AppendLine(snapshot.Diagnostic);
+        }
+        Directory.CreateDirectory("artifacts");File.WriteAllText("artifacts/live-character-map.txt",output.ToString());
+        Console.WriteLine("Saved artifacts/live-character-map.txt");return;
+    }
     if(args.Length>1&&args[1]=="InspectAll"){
         var output=new System.Text.StringBuilder();
         foreach(bool globals in new[]{false,true})for(int page=0;page<240;page++){

@@ -4,21 +4,21 @@
 
 **把走图、变速、补给和存档备份，放进一块可以自由摆放的游戏辅助面板。**
 
-0.3.9 · Windows x64 · 非官方开源工具 · 适配 Steam 原版 **Stoneshard 0.9.4.25 / Build 24780451**
+0.3.14 · Windows x64 · 非官方开源工具 · 适配 Steam 原版 **Stoneshard 0.9.4.25 / Build 24780451**
 
-**[下载 Windows 免安装版 ZIP](https://github.com/tidus2005/stoneshard-companion/releases/download/v0.3.9/StoneshardCompanion-0.3.9-win-x64.zip)** · [全部版本](https://github.com/tidus2005/stoneshard-companion/releases) · [完整使用说明](docs/使用说明.md)
+**[下载 Windows 免安装版 ZIP](https://github.com/tidus2005/stoneshard-companion/releases/download/v0.3.14/StoneshardCompanion-0.3.14-win-x64.zip)** · [全部版本](https://github.com/tidus2005/stoneshard-companion/releases) · [完整使用说明](docs/使用说明.md)
 
 ![晶石助手宽面板：左侧九宫格导航，上方角色状态，右侧补给、物品常显、变速和备份按钮](docs/images/hud-wide-v038.png)
 
 > 图片来自 **0.3.8 实际 WPF 界面组件的离屏预览**，角色数值、备份条目和路径为演示数据；不是游戏运行截图。自动功能在图中开启以展示效果，首次启动默认关闭。[图片生成方式](tools/DocImages/README.md)
 
-**0.3.9 更新**：按实际出口位置切图；中心被占时寻找附近可达空位；修复重定向目录被备份引擎误判为不允许的链接。[修复说明与验证范围](docs/0.3.9走图与重定向目录修复.md)
+**0.3.14 更新**：修复向上出口点击和饲料制作闪退，缩短切图等待；新增紧凑可调属性浮窗、补给续航、装备耐久预警、存档截图与总控设置。[发行说明与实测范围](docs/releases/v0.3.14.md)
 
 An open-source Windows companion for Stoneshard with a movable overlay, speed controls, item labels, compass navigation, supplies, and save backups.
 
 ## 三步开始使用
 
-1. 下载上面的 `StoneshardCompanion-0.3.9-win-x64.zip`，**完整解压**到普通文件夹。
+1. 下载上面的 `StoneshardCompanion-0.3.14-win-x64.zip`，**完整解压**到普通文件夹。
 2. 双击 `Start.cmd` 或 `StoneshardCompanion.exe`。随包包含 .NET，存档功能无需安装 PowerShell。
 3. 打开适配版本的游戏，使用窗口或无边框全屏；把面板拖到技能栏旁的空余位置。
 
@@ -54,7 +54,7 @@ An open-source Windows companion for Stoneshard with a movable overlay, speed co
 
 开启右上角的 **“方向键自动移动”** 后，也可以这样走图：
 
-1. 轻按键盘 ↑ / ↓ / ← / →，沿人物当前所在行或列走到对应边缘后停下。
+1. 轻按键盘 ↑ / ↓ / ← / →，沿人物当前所在行或列走到对应边缘。
 2. 到达边缘后自动前往实际出口格，并点击人物前进方向的外侧相邻格触发原版切图；每条路线只跨一张地图。
 3. 行走途中再次按方向键可停步；长按不会连续触发。
 
@@ -95,21 +95,15 @@ An open-source Windows companion for Stoneshard with a movable overlay, speed co
 
 0.3.8 先在 Windows 本地生成并校验 ZIP，再传输到备份目录，减少共享盘的小文件读写；传输失败时保留已经生成的本地 ZIP 与校验文件，未完成的上传不进入历史列表。目标目录一开始就无法访问时尚未生成本地副本，界面会据实报错。列表在后台读取，存档操作不再依赖 PowerShell 模块。
 
-Mac 虚拟机中的“文档”可能位于共享目录，遇到断开或不可写可改选 Windows 本地目录。**真实 Mac 虚拟机尚未实测**；具体备份保护与限制见 [0.3.8 共享目录备份加固](docs/0.3.8共享目录备份加固.md)。
+Mac 虚拟机中的“文档”可能位于共享目录，遇到断开或不可写可改选 Windows 本地目录。**本版已在 Mac 的 Windows ARM64 虚拟机实测共享目录备份**；具体备份保护与限制见 [0.3.8 共享目录备份加固](docs/0.3.8共享目录备份加固.md)。
 
 ## 适配与验证范围
 
 发行包面向 **Windows 11 x64（Intel / AMD）**，不是 Windows ARM64 原生包，也不是 macOS 应用。游戏桥接锁定 Steam 原版 **0.9.4.25 / Build 24780451** 的 EXE 与 data.win 哈希，版本不符会拒绝连接。
 
-| 验证范围 | 当前记录 |
-| --- | --- |
-| 0.3.9 存档引擎与便携程序 | 400 项离线检查（含真实目录链接备份/还原及走图模拟）；实际解压程序的临时存档备份、还原、异常检查；本机 Windows SMB 环回共享测试通过 |
-| 历史版本游戏内测试 | 0.3.1 / 0.3.2 有拖拽、图形备份、自动喝水、面板加速、移动常显、走到边缘和切图记录，详见历史报告 |
-| 仍需实机覆盖 | 新增九宫格角点、中心行走、自动跨图、普通方向键模式、退出游戏后常驻、不同 DPI、战斗受伤时的自动补给、火把点亮与换备用、真实 Mac 虚拟机 |
+实际验证了四方向切图、整行寻路、蓝莓制作饲料、喝水与进食后属性变化、续航采样、黄色耐久提醒、外观配置、属性关注、存档截图及完整退出。损坏红色与异常路径使用模拟回归；其他硬件、DPI、所有食物和战斗场景尚未逐项覆盖。完整范围见 [0.3.14 发行说明](docs/releases/v0.3.14.md)。
 
-界面预览和离线检查不代表上述场景已经实机通过；文件哈希还原成功也不代表游戏内成功读档。跨版本测试记录不作为当前版本的完整实机验收。
-
-**升级至 0.3.12 需保存进度并正常退出游戏，再退出旧助手、启动新版与游戏**，以加载新的 v9 桥接组件。工具包不含游戏、个人存档或本机设置。
+**升级至 0.3.14 请正常退出游戏，以加载 v11 桥接。** 自动更新会等待游戏关闭后安装并重启助手。工具包不含游戏、个人存档或本机设置。
 
 <details>
 <summary>使用说明、设计与历次验证报告</summary>

@@ -10,7 +10,7 @@ namespace StoneshardCompanion;
 
 public partial class MainWindow : Window
 {
-    private readonly DispatcherTimer poll=new(){Interval=TimeSpan.FromMilliseconds(250)};
+    private readonly DispatcherTimer poll=new(){Interval=TimeSpan.FromMilliseconds(75)};
     private readonly SpeedIntent intent=new();
     public UserPreferences Preferences {get;}=UserPreferences.Load();
     public int PreferredSpeed=>intent.Multiplier;
@@ -167,10 +167,10 @@ public partial class MainWindow : Window
         stats.Refresh(CharacterData);
         // Yield both overlays while the bridge prepares/sends its real click.
         if(state is {Ready:true,Fresh:true,WalkState:1,WalkPhase:1}){HideHud();return;}
-        if(!Preferences.ShowStats||!CharacterData.Fresh(Environment.TickCount64)||folded||session?.IsForeground!=true||(state!.UiFlags&~8u)!=0)stats.Hide();
+        if(!Preferences.ShowStats||!CharacterData.Fresh(Environment.TickCount64)||folded||!GameOrAssistantForeground()||(state!.UiFlags&~8u)!=0)stats.Hide();
         else if(session is not null&&Native.GetClientRect(session.Window,out var sr)&&sr.Right>0){var sp=new Native.Point();if(Native.ClientToScreen(session.Window,ref sp)){sr.Left+=sp.X;sr.Right+=sp.X;sr.Top+=sp.Y;sr.Bottom+=sp.Y;if(!stats.IsVisible)stats.Show();stats.Place(sr);}}
         if(!HudPolicy.Show(folded,state is {Ready:true,Fresh:true,SceneReady:true},state?.UiFlags??0)){HideHud();return;}
-        hud.Update(state,session?.IsForeground==true);
+        hud.Update(state,session?.IsForeground==true,session?.Pid??0);
         if(!hud.IsVisible)hud.Show();
         if(session is not null&&Native.IsWindow(session.Window)&&!Native.IsIconic(session.Window)&&Native.GetClientRect(session.Window,out var rect)&&rect.Right>0&&rect.Bottom>0){
             var point=new Native.Point();
@@ -180,6 +180,7 @@ public partial class MainWindow : Window
         }
         hud.PlaceDesktop();
     }
+    private bool GameOrAssistantForeground(){Native.GetWindowThreadProcessId(Native.GetForegroundWindow(),out var pid);return session?.IsForeground==true||pid==Environment.ProcessId;}
     private void HideHud(){hud.Hide();stats.Hide();}
     private void SetStatus(string status){Status=status;settings?.RefreshStatus(status);}
     public void ChooseSpeed(int multiplier)
@@ -240,7 +241,7 @@ public partial class MainWindow : Window
         finally{busy=false;}
     }
     public void ToggleFold(){folded=!folded;if(folded)HideHud();}
-    public void SavePreferences(){try{Preferences.Save();}catch(Exception e){ShowError("设置保存失败："+e.Message);}}
+    public void SavePreferences(){try{Preferences.Save();hud.ApplyAppearance();stats.ApplyAppearance();}catch(Exception e){ShowError("设置保存失败："+e.Message);}}
     public void ChangeBackupFolder(string folder)
     {
         if(Saves.Busy)throw new InvalidOperationException("请等待存档操作完成。");

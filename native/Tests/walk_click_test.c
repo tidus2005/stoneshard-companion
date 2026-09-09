@@ -46,11 +46,11 @@ int main(void){
     RV p={0};
     for(int d=1;d<=4;d++){
         reset();check(native_click_exit(p,d)&&moves==1&&downs==0&&ups==0,"only move is sent at queue time");
-        check(cursor.x==(d==3?1008:d==4?1112:1060)&&cursor.y==(d==1?688:d==2?792:740),"adjacent physical pixel with desktop origin and scaling");
-        now=1149;check(native_pump_exit_click()&&downs==0,"wait for hover update before press");
-        now=1150;check(native_pump_exit_click()&&downs==1&&ups==0,"press in a later frame");
-        now=1249;native_pump_exit_click();check(ups==0,"hold across frame boundary");
-        now=1250;native_pump_exit_click();native_pump_exit_click();check(ups==1&&downs==1&&exit_mouse_phase==0,"one release and no repeat");
+        check(cursor.x==(d==3?1008:d==4?1112:1060)&&cursor.y==(d==1?668:d==2?792:740),"adjacent physical pixel with desktop origin and scaling");
+        now=1069;check(native_pump_exit_click()&&downs==0,"wait for hover update before press");
+        now=1070;check(native_pump_exit_click()&&downs==1&&ups==0,"press in a later frame");
+        now=1139;native_pump_exit_click();check(ups==0,"hold across frame boundary");
+        now=1140;native_pump_exit_click();native_pump_exit_click();check(ups==1&&downs==1&&exit_mouse_phase==0,"one release and no repeat");
     }
     for(int reason=0;reason<5;reason++){
         reset();native_click_exit(p,2);if(reason==0)foreground=false;if(reason==1)covered=true;if(reason==2)cursor.x+=20;if(reason==3)shared->scene_ready=0;if(reason==4)modifiers=true;

@@ -20,7 +20,7 @@ public sealed class AppUpdater : IDisposable
     public bool Installing=>installing;
     public static string Root=>Path.Combine(UserPreferences.Folder,"Updates");
     public AppUpdater(MainWindow owner){this.owner=owner;timer.Tick+=async(_,_)=>{if(owner.Preferences.AutoUpdate&&DateTime.UtcNow>=nextCheck)await CheckAsync(false);await InstallWhenIdle();};}
-    public void Start(){if(App.UiTestMode)return;timer.Start();_=CheckAsync(false);}
+    public void Start(){if(App.TestWindows)return;timer.Start();_=CheckAsync(false);}
     private void Report(string text){Status=text;owner.RefreshUpdateStatus();}
     public async Task CheckAsync(bool userRequested)
     {

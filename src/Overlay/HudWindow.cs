@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -11,11 +12,15 @@ namespace StoneshardCompanion;
 public sealed class HudWindow : Window
 {
     private readonly MainWindow coordinator;
+    private readonly Border surface;
     private readonly UniformGrid actions=new();
     private readonly List<(Button Button,FrameworkElement Icon,TextBlock Label,uint Capability)> cells=[];
     private readonly TextBlock[] values=new TextBlock[4];
     private readonly TextBlock footer=new(){FontSize=10,Foreground=Brushes.Silver,TextTrimming=TextTrimming.CharacterEllipsis};
     private readonly Button speed,drink,torch,labels;
+    private readonly JourneyEstimator estimator=new();
+    private readonly TextBlock provisions=new(){FontSize=11,Foreground=Brushes.Wheat,TextTrimming=TextTrimming.CharacterEllipsis};
+    private readonly TextBlock equipment=new(){FontSize=11,Foreground=Brushes.Silver,TextTrimming=TextTrimming.CharacterEllipsis};
     private readonly Button exit=new(){Content="退出助手",FontSize=11,Padding=new Thickness(5,0,5,0),Margin=new Thickness(4,0,0,0),Focusable=false};
     private readonly Button walkKeys=new(){FontSize=11,Padding=new Thickness(5,0,5,0),Focusable=false,MinWidth=132};
     private readonly List<(Button Button,int Direction)> navigation=[];
@@ -37,14 +42,15 @@ public sealed class HudWindow : Window
     {
         coordinator=owner;Title="晶石助手 · 游戏增强";Width=HudGeometry.DefaultWidth;Height=HudGeometry.DefaultHeight;
         WindowStyle=WindowStyle.None;ResizeMode=ResizeMode.NoResize;AllowsTransparency=true;Background=Brushes.Transparent;
-        Topmost=true;ShowInTaskbar=App.UiTestMode;ShowActivated=false;FontFamily=new FontFamily("Microsoft YaHei UI");UseLayoutRounding=true;SnapsToDevicePixels=true;
+        Topmost=true;ShowInTaskbar=App.TestWindows;ShowActivated=false;FontFamily=new FontFamily("Microsoft YaHei UI");UseLayoutRounding=true;SnapsToDevicePixels=true;
         var root=new Grid();Content=root;
         var body=new Grid{Margin=new Thickness(10)};
-        foreach(var h in new[]{new GridLength(HudGeometry.HeaderHeight),new GridLength(26),new GridLength(1,GridUnitType.Star),new GridLength(18)})body.RowDefinitions.Add(new RowDefinition{Height=h});
-        root.Children.Add(new Border{Child=body,Background=new SolidColorBrush(Color.FromArgb(246,24,23,30)),BorderBrush=new SolidColorBrush(Color.FromRgb(109,96,116)),BorderThickness=new Thickness(2)});
+        foreach(var h in new[]{new GridLength(HudGeometry.HeaderHeight),new GridLength(26),new GridLength(1,GridUnitType.Star),new GridLength(18),new GridLength(18),new GridLength(18)})body.RowDefinitions.Add(new RowDefinition{Height=h});
+        surface=new Border{Child=body,BorderBrush=new SolidColorBrush(Color.FromRgb(109,96,116))};root.Children.Add(surface);ApplyAppearance();
         var grip=MakeThumb(HudCorner.Move,Cursors.SizeAll);
         grip.Template=TextThumbTemplate("⋮⋮   行旅辅助",false);grip.ToolTip="拖动此处移动面板；拖动四角改变大小";
-        var header=new DockPanel();DockPanel.SetDock(exit,Dock.Right);header.Children.Add(exit);DockPanel.SetDock(walkKeys,Dock.Right);header.Children.Add(walkKeys);header.Children.Add(grip);body.Children.Add(header);
+        var settingsButton=new Button{Content="设置",FontSize=11,Padding=new Thickness(4,0,4,0),Focusable=false,ToolTip="打开总控设置：面板外观、自动功能与存档"};settingsButton.Click+=(_,_)=>owner.OpenSettings();AutomationProperties.SetName(settingsButton,"打开总控设置");
+        var header=new DockPanel();DockPanel.SetDock(exit,Dock.Right);header.Children.Add(exit);DockPanel.SetDock(settingsButton,Dock.Right);header.Children.Add(settingsButton);DockPanel.SetDock(walkKeys,Dock.Right);header.Children.Add(walkKeys);header.Children.Add(grip);body.Children.Add(header);
         AutomationProperties.SetName(exit,"退出助手");exit.ToolTip="完全退出助手并停止辅助功能；存档操作中会等待完成后退出";exit.Click+=(_,_)=>owner.RequestExit();
         AutomationProperties.SetName(walkKeys,"方向键自动移动");walkKeys.Click+=(_,_)=>owner.ToggleWalkKeys();
         var stats=new UniformGrid{Columns=4};Grid.SetRow(stats,1);body.Children.Add(stats);
@@ -79,7 +85,8 @@ public sealed class HudWindow : Window
         var fodder=Add("meat","饲料","一键制作勾选材料 · 右键选择材料",2,owner.MakeFodder);
         var fodderMenu=new ContextMenu();var configure=new MenuItem{Header="选择饲料材料"};configure.Click+=(_,_)=>owner.OpenFodder();fodderMenu.Items.Add(configure);fodder.ContextMenu=fodderMenu;
         AddSupplyMenu(drink,true);AddSupplyMenu(torch,false);
-        var footerRow=new DockPanel();Grid.SetRow(footerRow,3);body.Children.Add(footerRow);
+        Grid.SetRow(provisions,3);body.Children.Add(provisions);Grid.SetRow(equipment,4);body.Children.Add(equipment);
+        var footerRow=new DockPanel();Grid.SetRow(footerRow,5);body.Children.Add(footerRow);
         var version=new TextBlock{Text=$"v{App.Version}",FontSize=10,Foreground=Muted,Margin=new Thickness(8,0,0,0),VerticalAlignment=VerticalAlignment.Center};
         DockPanel.SetDock(version,Dock.Right);footerRow.Children.Add(version);footerRow.Children.Add(footer);
         foreach(var (corner,h,v,cursor) in new[]{
@@ -93,7 +100,7 @@ public sealed class HudWindow : Window
         actions.SizeChanged+=(_,_)=>Reflow();
         SourceInitialized+=(_,_)=>{
             handle=new WindowInteropHelper(this).Handle;long style=Native.GetWindowLongPtr(handle,-20).ToInt64();
-            Native.SetWindowLongPtr(handle,-20,(nint)(App.UiTestMode?(style|0x08000000)&~0x80L:style|0x08000000|0x80));
+            Native.SetWindowLongPtr(handle,-20,(nint)(App.TestWindows?(style|0x08000000)&~0x80L:style|0x08000000|0x80));
             HwndSource.FromHwnd(handle).AddHook((nint h,int msg,nint w,nint l,ref bool done)=>{
                 if(msg==0x201){
                     // Use the queued mouse-down coordinates, not the cursor's
@@ -105,6 +112,7 @@ public sealed class HudWindow : Window
             });
         };
     }
+    public void ApplyAppearance(){surface.Background=new SolidColorBrush(Color.FromArgb((byte)Math.Round(coordinator.Preferences.HudOpacity*255),24,23,30));surface.BorderThickness=new Thickness(coordinator.Preferences.HudBorder?2:0);}
     private static ControlTemplate TextThumbTemplate(string text,bool corner)
     {
         var border=new FrameworkElementFactory(typeof(Border));border.SetValue(Border.BackgroundProperty,Brushes.Transparent);
@@ -144,10 +152,14 @@ public sealed class HudWindow : Window
         option.Click+=(_,_)=>{if(water)coordinator.Preferences.AutoDrink=option.IsChecked;else coordinator.Preferences.AutoTorch=option.IsChecked;coordinator.SavePreferences();};menu.Items.Add(option);
         var settings=new MenuItem{Header="补给设置与阈值"};settings.Click+=(_,_)=>coordinator.OpenSettings();menu.Items.Add(settings);button.ContextMenu=menu;
     }
-    public void Update(EngineState? state,bool foreground)
+    private int estimatePid;
+    public void Update(EngineState? state,bool foreground,int gamePid)
     {
+        if(estimatePid!=gamePid){estimatePid=gamePid;estimator.Reset();}
         exit.Content=coordinator.ExitRequested?"等待退出":"退出助手";exit.IsEnabled=!coordinator.ExitRequested;
-        bool usable=state is {Ready:true,Fresh:true,SceneReady:true,UiFlags:0}&&foreground;
+        Native.GetWindowThreadProcessId(Native.GetForegroundWindow(),out var foregroundPid);
+        bool ownedForeground=foregroundPid==Environment.ProcessId;
+        bool usable=state is {Ready:true,Fresh:true,SceneReady:true,UiFlags:0}&&(foreground||ownedForeground);
         foreach(var cell in cells)cell.Button.IsEnabled=cell.Capability==0||usable&&(state!.Capabilities&cell.Capability)!=0;
         drink.IsEnabled=torch.IsEnabled=usable;
         bool current=state is {Ready:true,Fresh:true,SceneReady:true};
@@ -176,10 +188,22 @@ public sealed class HudWindow : Window
         cells[7].Button.IsEnabled=!coordinator.Saves.Busy;
         walking=current&&state!.WalkState==1;
         foreach(var (button,direction) in navigation){
-            button.IsEnabled=state is not null&&HudPolicy.CanWalk(state.Ready,state.Fresh,state.SceneReady,foreground,state.UiFlags)&&(state.Capabilities&64)!=0;
+            button.IsEnabled=state is not null&&HudPolicy.CanWalk(state.Ready,state.Fresh,state.SceneReady,foreground||ownedForeground,state.UiFlags)&&(state.Capabilities&64)!=0;
             button.BorderBrush=walking&&(state!.WalkDirection==direction||state.WalkDirection==direction+10)?Active:Muted;
             button.ToolTip=walking?state!.WalkStatus+"\n点击任一方向停止 · Ctrl+Alt+End":direction==5?"角色走到地图中心 · Ctrl+Alt+Home":direction>=6?$"走到地图{EngineState.WalkDestinationName(direction)}后停下 · 遇敌停止":$"走到{EngineState.WalkDestinationName(direction)}并切入相邻地图 · 遇敌停止";
         }
+        var estimate=estimator.Update(current?state!.Telemetry:new(),readings[0],readings[1],coordinator.Preferences.HungerPerHour,coordinator.Preferences.ThirstPerHour);
+        provisions.Text=$"食物 {JourneyEstimator.Duration(estimate.FoodHours)} · 水 {JourneyEstimator.Duration(estimate.WaterHours)}";
+        provisions.ToolTip=estimate.Explanation;
+        var gear=current?state!.Telemetry.Journey.Equipment:[];
+        var warnings=gear.Where(g=>JourneyEstimator.Severity(g,coordinator.Preferences.DurabilityWarning)>0).OrderByDescending(g=>JourneyEstimator.Severity(g,coordinator.Preferences.DurabilityWarning)).ToArray();
+        equipment.Text=!current?"装备：等待数据":warnings.Length>0?string.Join(" · ",warnings.Select(g=>$"{StatMechanics.CleanLabel(g.Name)} {(g.Current<=0?"已损坏":$"{g.Current/g.Maximum*100:0}%")}")):gear.Length>0?"装备耐久正常":"装备耐久：暂无数据";
+        equipment.Foreground=Muted;
+        if(warnings.Length>0){equipment.Inlines.Clear();foreach(var g in warnings){
+            if(equipment.Inlines.Count>0)equipment.Inlines.Add(new Run(" · "));
+            equipment.Inlines.Add(new Run($"{StatMechanics.CleanLabel(g.Name)} {(g.Current<=0?"已损坏":$"{g.Current/g.Maximum*100:0}%")}"){Foreground=g.Current<=0?Brushes.Tomato:Brushes.Gold});
+        }}
+        equipment.ToolTip=string.Join("\n",gear.Select(g=>$"{StatMechanics.CleanLabel(g.Name)}：{g.Current:0.#}/{g.Maximum:0.#}（{g.Current/g.Maximum*100:0.#}%）"));
         // Keep backup progress/results visible even after a completed journey.
         footer.Text=coordinator.Saves.Busy?coordinator.SaveStatus:walking?state!.WalkStatus:!current||coordinator.SaveStatus!="备份保存已落盘的进度"?coordinator.SaveStatus:state!.WalkState>1?state.WalkStatus:coordinator.Preferences.AutoDrink||coordinator.Preferences.AutoTorch?coordinator.SupplyStatus:coordinator.SaveStatus;
         footer.ToolTip=footer.Text;
