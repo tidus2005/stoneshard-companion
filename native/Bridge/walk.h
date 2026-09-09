@@ -59,6 +59,20 @@ static bool walk_threat(RV player){
     return member_number(player,"is_see_enemy")!=0||member_number(player,"is_damage_taken")!=0||member_number(player,"is_take_injury")!=0;
 }
 static int walk_cardinal(int direction){return direction>=11&&direction<=14?direction-10:direction>=1&&direction<=4?direction:0;}
+static bool walk_border_cell(int direction,double px,double py){
+    int d=walk_cardinal(direction);double width=shared->map_w,height=shared->map_h;
+    if(!d||!isfinite(px)||!isfinite(py)||!isfinite(width)||!isfinite(height)||width<104||height<104||px<0||py<0||px>=width||py>=height)return false;
+    int col=(int)floor(px/26),row=(int)floor(py/26),cols=(int)floor(width/26),rows=(int)floor(height/26);
+    return d<=2?(col>=1&&col<cols-1&&(d==1?row<=1:row>=rows-2)):(row>=1&&row<rows-1&&(d==3?col<=1:col>=cols-2));
+}
+static bool walk_safe(RV player){
+#ifdef COMPANION_NATIVE_TEST
+    return supply_safe(player);
+#else
+    RV state=get_member(player,"state");bool idle=!strcmp(text_value(state),"idle");release_value(&state);
+    return shared->scene_ready&&!(shared->ui_flags&~8u)&&idle&&member_number(player,"turn_available")==1&&member_number(player,"movingIsDone")==1&&member_number(player,"is_sleeping")==0&&!walk_threat(player);
+#endif
+}
 static bool walk_exit_target(int direction,double* x,double* y){
     int d=walk_cardinal(direction);double px=shared->player_x,py=shared->player_y;
     if(!d||!walk_target(d,shared->map_w,shared->map_h,true,x,y)||!isfinite(px)||!isfinite(py))return false;
@@ -83,7 +97,7 @@ static void finish_walk(int reason,bool stop_native){
         if(valid_object(player)&&member_number(player,"id")==walk_player_id){RV flag=numeric(0),out=call_script(0x19123a0,player,1,&flag);release_value(&out);}
         release_value(&player);
     }
-    shared->walk_state=reason;walk_dispatch_pending=false;
+    native_cancel_exit_click();shared->walk_state=reason;walk_dispatch_pending=false;
 }
 static int start_walk(int direction){
     if(direction==0){finish_walk(WALK_MANUAL,true);return 0;}
@@ -91,7 +105,7 @@ static int start_walk(int direction){
     if(!exit&&!walk_destination(direction,&x,&y))return 4;
     if(shared->walk_state==WALK_ACTIVE)return 7;
     RV player=find_instance("o_player");
-    if(!valid_object(player)||!supply_safe(player)){release_value(&player);return 7;}
+    if(!valid_object(player)||!walk_safe(player)){release_value(&player);return 7;}
     shared->walk_direction=direction;shared->walk_x=x;shared->walk_y=y;shared->walk_phase=exit?1:0;
     walk_exit_activated=false;
     if(direction==5)prepare_center(x,y);
@@ -113,7 +127,7 @@ static int request_walk(int direction){
            shared->scene_ready&&walk_scene==shared->scene_generation&&walk_window==shared->window_generation){
             RV player=find_instance("o_player");
             double exit_x,exit_y,px=member_number(player,"x"),py=member_number(player,"y");
-            arrived=valid_object(player)&&member_number(player,"id")==walk_player_id&&supply_safe(player)&&
+            arrived=valid_object(player)&&member_number(player,"id")==walk_player_id&&walk_safe(player)&&
                 ((fabs(px-shared->walk_x)<2&&fabs(py-shared->walk_y)<2)||
                  (native_exit_target(direction,px,py,&exit_x,&exit_y)&&fabs(exit_x-px)<28&&fabs(exit_y-py)<28));
             release_value(&player);
@@ -132,11 +146,14 @@ static void reconcile_walk(uint32_t reasons){
     RV player=find_instance("o_player");
     if(!valid_object(player)||member_number(player,"id")!=walk_player_id){release_value(&player);finish_walk(WALK_SCENE,false);return;}
     if(walk_threat(player)){release_value(&player);finish_walk(WALK_THREAT,true);return;}
+    if(!native_pump_exit_click()){release_value(&player);finish_walk(WALK_MANUAL,false);return;}
     if(walk_dispatch_pending){
         uint64_t elapsed=GetTickCount64()-walk_started;
         if(elapsed>(shared->walk_direction==5?8000:2000)){release_value(&player);finish_walk(WALK_TIMEOUT,false);return;}
-        if(elapsed<150||walk_modifiers_down()){release_value(&player);return;}
-        if(!supply_safe(player)){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}
+        // The overlay polls every 250 ms; allow it to hide panels over the exit.
+        // Obstruction is still checked at the actual click, never clicked through.
+        if(elapsed<(shared->walk_phase==1?600:150)||walk_modifiers_down()){release_value(&player);return;}
+        if(!walk_safe(player)){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}
         if(shared->walk_direction==5){
             double cx,cy;walk_target(5,shared->map_w,shared->map_h,false,&cx,&cy);
             bool found=false;uint64_t scan_start=GetTickCount64();
@@ -151,9 +168,13 @@ static void reconcile_walk(uint32_t reasons){
         }
         if(shared->walk_phase==1){
             double tx,ty,px=member_number(player,"x"),py=member_number(player,"y");
-            if(!native_exit_target(shared->walk_direction,px,py,&tx,&ty)){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}
-            shared->walk_x=tx;shared->walk_y=ty;
-            if(fabs(px-tx)<2&&fabs(py-ty)<2){if(!native_click_exit(player,shared->walk_direction)){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}walk_exit_activated=true;release_value(&player);walk_dispatch_pending=false;walk_progress=walk_started=GetTickCount64();return;}
+            if(!walk_border_cell(shared->walk_direction,px,py)&&!native_exit_target(shared->walk_direction,px,py,&tx,&ty)){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}
+            // At the reached border, click the adjacent outward cell directly.
+            // Do not wait for a synthetic route to an assumed outer row first.
+            shared->walk_x=px;shared->walk_y=py;
+            if(!native_click_exit(player,shared->walk_direction)){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}
+            walk_exit_activated=true;release_value(&player);walk_dispatch_pending=false;
+            walk_progress=walk_started=GetTickCount64();return;
         }
         restore_camera(true);
         RV args[2]={numeric(shared->walk_x),numeric(shared->walk_y)},out=call_script(0x1805180,player,2,args);
@@ -162,7 +183,7 @@ static void reconcile_walk(uint32_t reasons){
     }
     double x=member_number(player,"x"),y=member_number(player,"y");
     RV state=get_member(player,"state");bool idle=!strcmp(text_value(state),"idle")&&member_number(player,"movingIsDone")==1;
-    double path=member_number(player,"path");bool safe=supply_safe(player);release_value(&state);release_value(&player);
+    double path=member_number(player,"path");bool safe=walk_safe(player);release_value(&state);release_value(&player);
     uint64_t now=GetTickCount64();
     if(fabs(x-walk_last_x)>1||fabs(y-walk_last_y)>1){walk_progress=now;walk_last_x=x;walk_last_y=y;}
     if(idle&&fabs(x-shared->walk_x)<2&&fabs(y-shared->walk_y)<2){
@@ -179,7 +200,7 @@ static void reconcile_walk(uint32_t reasons){
             double tx,ty;
             if(!native_exit_target(shared->walk_direction,x,y,&tx,&ty)||fabs(x-tx)>=2||fabs(y-ty)>=2){finish_walk(WALK_BLOCKED,false);return;}
             RV current=find_instance("o_player");
-            bool clicked=valid_object(current)&&member_number(current,"id")==walk_player_id&&supply_safe(current)&&native_click_exit(current,shared->walk_direction);
+            bool clicked=valid_object(current)&&member_number(current,"id")==walk_player_id&&walk_safe(current)&&native_click_exit(current,shared->walk_direction);
             release_value(&current);if(!clicked){finish_walk(WALK_BLOCKED,false);return;}walk_exit_activated=true;walk_progress=now;
         }
         if(now-walk_progress>2000)finish_walk(WALK_BLOCKED,false);

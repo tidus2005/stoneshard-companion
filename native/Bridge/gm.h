@@ -9,10 +9,10 @@ static RV call_builtin(uintptr_t offset,int count,RV* args){RV r={.kind=5};((Bui
 static double number(RV r){switch(r.kind&0xffffff){case 0:case 13:return r.real;case 7:return (int32_t)r.integer;case 10:return (double)r.integer;case 15:return (int32_t)r.integer;default:return NAN;}}
 static const char* text_value(RV r){return (r.kind&0xffffff)==1 && r.ptr ? *(const char**)r.ptr : "";}
 typedef struct CachedString {const char* name;RV value;} CachedString;
-static CachedString string_cache[256];static size_t string_count;
+static CachedString string_cache[512];static size_t string_count;
 static RV string_value(const char* s){
     for(size_t i=0;i<string_count;i++)if(!strcmp(string_cache[i].name,s))return string_cache[i].value;
-    if(string_count>=256)return (RV){.kind=5};
+    if(string_count>=512)return (RV){.kind=5};
     CachedString* c=&string_cache[string_count++];c->name=s;c->value=(RV){.kind=5};
     ((void(*)(RV*,const char*))(game+0x51b2890))(&c->value,s);return c->value;
 }
@@ -140,6 +140,7 @@ static uint32_t blocking_ui(void){
     return result;
 }
 #include "supplies.h"
+#include "telemetry.h"
 static void refresh_scene(void){
     if(!global_scope)init_gm();
     RV player,camera;bool play=scene_objects(&player,&camera);
@@ -165,6 +166,7 @@ static void refresh_scene(void){
     shared->auto_center=auto_center?1:0;
     shared->scene_ready=play&&playable_since&&GetTickCount64()-playable_since>=600;
     refresh_supplies(play,player);
+    refresh_telemetry(play,player);
 }
 // Read-only development diagnostic. Enumerate variable names through the runner,
 // never infer a field from a numerical offset or keep dynamic string pointers.

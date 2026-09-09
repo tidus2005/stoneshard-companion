@@ -16,6 +16,9 @@ public partial class MainWindow : Window
     public int PreferredSpeed=>intent.Multiplier;
     public string Status {get;private set;}="等待游戏启动";
     private readonly HudWindow hud;
+    private readonly StatsWindow stats;
+    private FodderWindow? fodderWindow;
+    public CharacterTelemetry CharacterData {get;private set;}=new();
     private readonly SupplyPolicy supply=new();
     public SaveManagerService Saves {get;private set;}=null!;
     public string SaveStatus {get;private set;}="备份保存已落盘的进度";
@@ -44,10 +47,11 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         Saves=App.UiTestMode?new(saveRoot:Path.Combine(UserPreferences.Folder,"StoneShard"),backupRoot:Path.Combine(UserPreferences.Folder,"Backups")):new(backupRoot:Preferences.BackupFolder);
-        InitializeComponent();hud=new(this);Updater=new(this);
+        InitializeComponent();hud=new(this);stats=new(this);Updater=new(this);
         tray=new Forms.NotifyIcon{Text="晶石助手 · 行旅辅助",Icon=System.Drawing.SystemIcons.Application,Visible=true};
         var menu=new Forms.ContextMenuStrip();
         menu.Items.Add("设置与快捷键",null,(_,_)=>Dispatcher.Invoke(OpenSettings));
+        menu.Items.Add("马车饲料",null,(_,_)=>Dispatcher.Invoke(OpenFodder));
         menu.Items.Add("一键备份存档",null,(_,_)=>Dispatcher.Invoke(()=>Backup(false)));
         menu.Items.Add("存档管理",null,(_,_)=>Dispatcher.Invoke(OpenSaves));
         menu.Items.Add("显示 / 隐藏增强栏",null,(_,_)=>Dispatcher.Invoke(ToggleFold));
@@ -57,6 +61,22 @@ public partial class MainWindow : Window
         SourceInitialized+=InitializeNative;Closing+=OnClosing;
         poll.Tick+=async(_,_)=>await PollAsync();
         Loaded+=async(_,_)=>{Hide();RefreshHud(null);poll.Start();Updater.Start();await PollAsync();};
+    }
+    public async void MakeFodder(){if(Preferences.FodderMaterials.Count==0){OpenFodder();return;}SetStatus(await CraftFodder());}
+    public void OpenFodder(){
+        if(fodderWindow is null){fodderWindow=new(this){Owner=hud};fodderWindow.Closed+=(_,_)=>fodderWindow=null;}
+        fodderWindow.Show();fodderWindow.Activate();
+    }
+    public async Task<string> CraftFodder(){
+        if(busy||bridge is null||!CharacterData.Fresh(Environment.TickCount64)||!CharacterData.FoodsComplete)return "请等待有效游戏连接与新鲜背包数据。";
+        var selected=Preferences.FodderMaterials.Where(k=>CharacterData.Foods.Any(f=>f.Key==k)).ToArray();
+        if(selected.Length==0)return "先勾选要转换的材料。";
+        busy=true;try{
+            var current=bridge;string payload=FodderPolicy.Selection(selected);ReturnToGame();await Task.Delay(200);
+            if(closing||current!=bridge||session?.IsForeground!=true)return "游戏状态变化，已取消制作。";
+            var result=await current.SendAsync(EngineCommand.Fodder,payload:payload);
+            return result.Detail;
+        }catch(Exception ex){return "制作未确认，不会重复执行："+ex.Message;}finally{busy=false;}
     }
     private void InitializeNative(object? sender,EventArgs e)
     {
@@ -143,6 +163,12 @@ public partial class MainWindow : Window
     }
     private void RefreshHud(EngineState? state)
     {
+        CharacterData=state is {Ready:true,Fresh:true,SceneReady:true}?state.Telemetry:new();
+        stats.Refresh(CharacterData);
+        // Yield both overlays while the bridge prepares/sends its real click.
+        if(state is {Ready:true,Fresh:true,WalkState:1,WalkPhase:1}){HideHud();return;}
+        if(!Preferences.ShowStats||!CharacterData.Fresh(Environment.TickCount64)||folded||session?.IsForeground!=true||(state!.UiFlags&~8u)!=0)stats.Hide();
+        else if(session is not null&&Native.GetClientRect(session.Window,out var sr)&&sr.Right>0){var sp=new Native.Point();if(Native.ClientToScreen(session.Window,ref sp)){sr.Left+=sp.X;sr.Right+=sp.X;sr.Top+=sp.Y;sr.Bottom+=sp.Y;if(!stats.IsVisible)stats.Show();stats.Place(sr);}}
         if(!HudPolicy.Show(folded,state is {Ready:true,Fresh:true,SceneReady:true},state?.UiFlags??0)){HideHud();return;}
         hud.Update(state,session?.IsForeground==true);
         if(!hud.IsVisible)hud.Show();
@@ -154,7 +180,7 @@ public partial class MainWindow : Window
         }
         hud.PlaceDesktop();
     }
-    private void HideHud(){hud.Hide();}
+    private void HideHud(){hud.Hide();stats.Hide();}
     private void SetStatus(string status){Status=status;settings?.RefreshStatus(status);}
     public void ChooseSpeed(int multiplier)
     {
@@ -265,6 +291,6 @@ public partial class MainWindow : Window
         if(closed)return;e.Cancel=true;if(closing)return;if(Saves.Busy){RequestExit();return;}closing=true;poll.Stop();RegisterKeys(false);HideHud();
         Updater.Dispose();intent.Stop();
         try{if(bridge is not null)await bridge.SendAsync(EngineCommand.Reset);}catch(Exception ex){UserPreferences.Log("exit-reset "+ex.Message);}
-        finally{bridge?.Dispose();Native.UnregisterHotKey(hwnd,20);Native.UnregisterHotKey(hwnd,21);tray.Dispose();settings?.Close();savesWindow?.Close();hud.Close();closed=true;_=Dispatcher.BeginInvoke(Close);}
+        finally{bridge?.Dispose();Native.UnregisterHotKey(hwnd,20);Native.UnregisterHotKey(hwnd,21);tray.Dispose();settings?.Close();savesWindow?.Close();fodderWindow?.Close();stats.Close();hud.Close();closed=true;_=Dispatcher.BeginInvoke(Close);}
     }
 }

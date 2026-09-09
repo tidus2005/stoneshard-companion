@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 #define BRIDGE_MAGIC 0x53484331u
-#define BRIDGE_VERSION 9u
+#define BRIDGE_VERSION 10u
 #define BRIDGE_MESSAGE (WM_APP + 0x437)
 #define CMD_REFRESH 1
 #define CMD_SPEED 2
@@ -74,9 +74,11 @@ typedef struct SharedState {
     uint64_t label_draw_calls,label_draw_overrides; // 3944,3952
     uint32_t walk_phase;             // 3960: 0 approach/center, 1 exit tile
     uint32_t walk_keys_enabled;      // 3964: unmodified arrow key intent
+    char telemetry[57344]; // 3968: bounded UTF-8 JSON, same seqlock as state
+    char fodder_selection[2048]; // 61312: request payload, same command seqlock
 } SharedState;
 
-_Static_assert(sizeof(SharedState) <= 4096, "mapping bounds");
+_Static_assert(sizeof(SharedState) <= 65536, "mapping bounds");
 _Static_assert(offsetof(SharedState,scene_ready)==3772,"scene ABI");
 _Static_assert(offsetof(SharedState,preferred_multiplier)==3792,"intent ABI");
 _Static_assert(offsetof(SharedState,vital_valid)==3856,"vitals ABI");
@@ -88,4 +90,4 @@ _Static_assert(offsetof(SharedState,highlight_applied)==3912,"highlight applied 
 _Static_assert(offsetof(SharedState,walk_x)==3928,"walk target ABI");
 _Static_assert(offsetof(SharedState,walk_phase)==3960,"walk phase ABI");
 _Static_assert(offsetof(SharedState,walk_keys_enabled)==3964,"walk keys ABI");
-_Static_assert(sizeof(SharedState)==3968,"v9 state size");
+_Static_assert(offsetof(SharedState,telemetry)==3968,"telemetry ABI");

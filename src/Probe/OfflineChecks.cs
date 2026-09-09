@@ -10,6 +10,7 @@ internal static class OfflineChecks
     public static async Task Run(string root,string? saveRunner=null)
     {
         IntentChecks.Run();
+        CharacterChecks.Run();
         await SavePathChecks.Run(null,null);
         await UpdateChecks.Run();
         int cycle=1;
@@ -43,7 +44,7 @@ internal static class OfflineChecks
         Check(!HudPolicy.CanWalk(false,false,false,false,0)&&!HudPolicy.CanWalk(true,true,false,true,0),"no game and main menu disable walking while HUD stays visible");
         Check(!HudPolicy.CanWalk(true,true,true,false,0)&&!HudPolicy.CanWalk(true,false,true,true,0),"background and stale states cannot trigger journey");
         Check(HudPolicy.CanWalk(true,true,true,true,8)&&!HudPolicy.CanWalk(true,true,true,true,2),"hover allows journey, native dialogs block it");
-        var packet=new byte[3968];
+        var packet=new byte[EngineBridge.SnapshotSize];
         BitConverter.GetBytes(1).CopyTo(packet,12);BitConverter.GetBytes(1).CopyTo(packet,3772);
         BitConverter.GetBytes(Environment.TickCount64).CopyTo(packet,3872);
         BitConverter.GetBytes(64u).CopyTo(packet,68);BitConverter.GetBytes(1u).CopyTo(packet,3916);

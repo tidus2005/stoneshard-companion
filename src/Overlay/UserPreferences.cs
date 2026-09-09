@@ -5,6 +5,13 @@ namespace StoneshardCompanion;
 
 public sealed class UserPreferences
 {
+    public bool ShowStats {get;set;}=true;
+    public bool StatsFavoritesOnly {get;set;}
+    public HashSet<string> FavoriteStats {get;set;}=[];
+    public HashSet<string> FodderMaterials {get;set;}=[];
+    public bool StatsPlaced {get;set;}
+    public double StatsX {get;set;}
+    public double StatsY {get;set;}
     public bool AutoUpdate {get;set;}=true;
     public bool AutoCenter { get; set; }
     public bool RememberSpeed { get; set; }
@@ -28,6 +35,9 @@ public sealed class UserPreferences
     {
         try {
             var p=JsonSerializer.Deserialize<UserPreferences>(File.ReadAllText(FileName))??new();
+            p.FavoriteStats=(p.FavoriteStats??[]).Where(k=>StatsCatalog.All.Any(d=>d.Key==k)).ToHashSet(StringComparer.Ordinal);
+            p.FodderMaterials=(p.FodderMaterials??[]).Where(FodderPolicy.ValidKey).Take(32).ToHashSet(StringComparer.Ordinal);
+            if(!double.IsFinite(p.StatsX)||!double.IsFinite(p.StatsY))p.StatsPlaced=false;
             p.LastSpeed=Math.Clamp(p.LastSpeed,1,4);p.Scale=Math.Clamp(p.Scale,.75,1.35);p.BottomOffset=Math.Clamp(p.BottomOffset,-60,180);
             p.DrinkThreshold=double.IsFinite(p.DrinkThreshold)?Math.Clamp(p.DrinkThreshold,10,80):25;
             if(!double.IsFinite(p.HudX)||!double.IsFinite(p.HudY)||!double.IsFinite(p.HudWidth)||!double.IsFinite(p.HudHeight))p.HasHudPlacement=false;

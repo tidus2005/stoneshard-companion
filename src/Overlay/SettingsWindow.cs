@@ -26,6 +26,10 @@ public sealed class SettingsWindow : Window
         Check("进入新地图时镜头自动居中",()=>owner.Preferences.AutoCenter,v=>owner.Preferences.AutoCenter=v);
         Check("下次启动游戏沿用倍率",()=>owner.Preferences.RememberSpeed,v=>{owner.Preferences.RememberSpeed=v;owner.Preferences.LastSpeed=owner.PreferredSpeed;});
         AddText("速度按钮点击即按正常 1× → 加速 2× → 急速 3× → 正常循环，不弹出菜单；三种图标对应三个档位。状态栏和背包打开时保持所选速度；暂停菜单、对话和大地图中暂回正常。自动走图沿用原版寻路与回合消耗，到边缘后再跨入相邻地图，进入新地图后结束；手动接管、遇敌、打开面板或切到后台时结束。不可达目标或出口会停止并提示。左侧中心键让角色走到地图中央，行走中点击任一方向键停步。");
+        AddText("角色属性与饲料",16);
+        Check("左侧显示半透明角色属性面板",()=>owner.Preferences.ShowStats,v=>owner.Preferences.ShowStats=v);
+        AddText("属性面板可拖动标题移动；全部／特别关注切换，悬停点星标保存关注。悬停数值查看原生基础值和来源；不可确认的来源不会伪造。打开游戏原生面板时自动避让。");
+        Button("马车饲料：选择材料／一键制作",owner.OpenFodder);
         AddText("自动补给",16);
         Check("自动喝水",()=>owner.Preferences.AutoDrink,v=>owner.Preferences.AutoDrink=v);
         var threshold=new TextBlock{Text=$"口渴达到 {owner.Preferences.DrinkThreshold:0}% 时喝水",Margin=new Thickness(0,12,0,8)};panel.Children.Add(threshold);

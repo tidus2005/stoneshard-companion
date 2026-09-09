@@ -76,6 +76,8 @@ public sealed class HudWindow : Window
         Add("gears","设置","设置与快捷键",0,owner.OpenSettings);
         Add("pause-button","停止","停止行走、加速、常显和自动补给 · Ctrl+Alt+S",0,owner.Reset);
         Add("return-arrow","收起","隐藏面板 · Ctrl+Alt+O 恢复",0,owner.ToggleFold);
+        var fodder=Add("meat","饲料","一键制作勾选材料 · 右键选择材料",2,owner.MakeFodder);
+        var fodderMenu=new ContextMenu();var configure=new MenuItem{Header="选择饲料材料"};configure.Click+=(_,_)=>owner.OpenFodder();fodderMenu.Items.Add(configure);fodder.ContextMenu=fodderMenu;
         AddSupplyMenu(drink,true);AddSupplyMenu(torch,false);
         var footerRow=new DockPanel();Grid.SetRow(footerRow,3);body.Children.Add(footerRow);
         var version=new TextBlock{Text=$"v{App.Version}",FontSize=10,Foreground=Muted,Margin=new Thickness(8,0,0,0),VerticalAlignment=VerticalAlignment.Center};

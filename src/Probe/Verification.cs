@@ -43,8 +43,8 @@ static class Verification
             await bridge.SendAsync(EngineCommand.Speed,3);await bridge.SendAsync(EngineCommand.Center);
             await bridge.SendAsync(EngineCommand.HighlightSet,1);await Task.Delay(800);
             Check(bridge.ReadState().HighlightApplied,"Virtual item highlight applied before disconnect");
-            using var map=MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v9.{session.Pid}",MemoryMappedFileRights.Read);
-            using var view=map.CreateViewAccessor(0,4096,MemoryMappedFileAccess.Read);
+            using var map=MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v10.{session.Pid}",MemoryMappedFileRights.Read);
+            using var view=map.CreateViewAccessor(0,65536,MemoryMappedFileAccess.Read);
             bridge.Dispose();bridge=null;await Task.Delay(2200);
             Check(view.ReadDouble(80)==initial.BaseSpeed&&view.ReadInt32(160)==0,"Watchdog restores speed and camera after controller disconnect",new{target=view.ReadDouble(80),cameraMode=view.ReadInt32(160)});
             Check(view.ReadInt32(3860)==0&&view.ReadInt32(3912)==0,"Watchdog releases item highlight after controller disconnect");

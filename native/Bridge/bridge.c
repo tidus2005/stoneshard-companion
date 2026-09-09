@@ -89,7 +89,7 @@ static void on_command(void) {
     processed_seq=seq; // At most once, including rejected commands.
     InterlockedIncrement(&shared->status_seq);refresh_scene();InterlockedIncrement(&shared->status_seq);
     DWORD foreground_pid=0;GetWindowThreadProcessId(GetForegroundWindow(),&foreground_pid);
-    bool action=(cmd>=CMD_CENTER&&cmd<=CMD_VISOR)||(cmd>=11&&cmd<=13)||(cmd==14&&arg!=0);
+    bool action=(cmd>=CMD_CENTER&&cmd<=CMD_VISOR)||(cmd>=11&&cmd<=13)||(cmd==14&&arg!=0)||cmd==17;
     if(GetTickCount64()>deadline){publish(3,"Request expired");}
     else if(shared->request_window_generation!=shared->window_generation || (action&&shared->request_scene_generation!=shared->scene_generation))publish(9,"Scene or window changed; action cancelled");
     else if(action&&(!shared->scene_ready||(shared->ui_flags&(cmd==14?~8u:~0u))))publish(7,"Native UI or scene blocks actions");
@@ -113,6 +113,7 @@ static void on_command(void) {
     }
     else if(cmd==15){if(arg!=0&&arg!=1)publish(4,"Invalid highlight state");else{highlight_requested=arg==1;publish(0,"Highlight intent synchronized");}}
     else if(cmd==14){int result=(!isfinite(arg)||floor(arg)!=arg||arg<0||arg>9)?4:request_walk((int)arg);publish(result,result?"Native walk unavailable":"Native map journey requested");}
+    else if(cmd==17){int result=craft_selected_fodder();publish(result,result?"饲料制作已停止：请确认材料、安全状态和背包空间":"已调用原版饲料制作；请核对背包产物");}
     else if(cmd==16){if(arg!=0&&arg!=1)publish(4,"Invalid walk keys state");else{set_walk_keys(arg==1);publish(0,"Walk keys intent synchronized");}}
     else if(cmd==11){if(arg!=0&&arg!=1)publish(4,"Invalid water mode");else{int result=drink_water(arg==1);publish(result,result?"Water action unavailable or not confirmed":"Water consumed by native action");}}
     else if(cmd==12){if(arg!=0&&arg!=1&&arg!=2&&arg!=17&&arg!=18)publish(4,"Invalid torch mode");else{int mode=(int)arg;int result=toggle_torch(mode&3,(mode&16)!=0);publish(result,result?"Torch action unavailable or not confirmed":"Torch native action confirmed");}}
@@ -171,6 +172,7 @@ static LRESULT CALLBACK bridge_proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         return 0;
     }
     if(msg==WM_NCDESTROY){
+        native_cancel_exit_click();
         reconcile_highlight(false);
         KillTimer(hwnd,tick_timer);
         InterlockedExchange((LONG*)&shared->ready,0);
@@ -208,12 +210,12 @@ __declspec(dllexport) DWORD WINAPI BridgeStart(void* ignored) {
     // Startup can expose a window before the frame manager is initialized.
     // Do not publish a mapping until a valid baseline exists; allow a later retry.
     baseline=get_speed();if(!isfinite(baseline)||baseline<1 || baseline>240)return start_failed(15);
-    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v9.%lu",GetCurrentProcessId());
-    mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,NULL,PAGE_READWRITE,0,4096,name);
+    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v10.%lu",GetCurrentProcessId());
+    mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,NULL,PAGE_READWRITE,0,65536,name);
     if(!mapping)return start_failed(12);
     if(GetLastError()==ERROR_ALREADY_EXISTS)return start_failed(13);
-    shared=(SharedState*)MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,4096);if(!shared)return start_failed(14);
-    ZeroMemory(shared,4096);
+    shared=(SharedState*)MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,65536);if(!shared)return start_failed(14);
+    ZeroMemory(shared,65536);
     FILETIME create,exit,kernel,user;GetProcessTimes(GetCurrentProcess(),&create,&exit,&kernel,&user);
     shared->process_start=((uint64_t)create.dwHighDateTime<<32)|create.dwLowDateTime;
     shared->magic=BRIDGE_MAGIC;shared->version=BRIDGE_VERSION;shared->pid=GetCurrentProcessId();

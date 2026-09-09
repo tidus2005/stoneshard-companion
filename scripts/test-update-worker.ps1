@@ -1,5 +1,11 @@
 param([Parameter(Mandatory)][string]$PackageFolder)
 $ErrorActionPreference='Stop'
+$runningGame = @(Get-Process -Name StoneShard -ErrorAction SilentlyContinue)
+if ($runningGame.Count) {
+    $runningGame | ForEach-Object { $_.Dispose() }
+    Write-Output 'SKIP packaged update helper while game is running: the production guard would show a dialog. Run this test on game-free CI.'
+    return
+}
 $projectRoot=Split-Path -Parent $PSScriptRoot
 $package=(Resolve-Path -LiteralPath $PackageFolder).Path
 $fixture=Join-Path $projectRoot 'artifacts\update-fixture'
