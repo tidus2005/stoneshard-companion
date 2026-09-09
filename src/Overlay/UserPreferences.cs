@@ -5,6 +5,7 @@ namespace StoneshardCompanion;
 
 public sealed class UserPreferences
 {
+    public bool AutoUpdate {get;set;}=true;
     public bool AutoCenter { get; set; }
     public bool RememberSpeed { get; set; }
     public int LastSpeed { get; set; } = 1;
@@ -21,7 +22,7 @@ public sealed class UserPreferences
     public double HudY {get;set;}=16;
     public double HudWidth {get;set;}=HudGeometry.DefaultWidth;
     public double HudHeight {get;set;}=HudGeometry.DefaultHeight;
-    public static string Folder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"StoneshardCompanion");
+    public static string Folder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),App.UiTestMode?"StoneshardCompanion-UiTest":"StoneshardCompanion");
     private static string FileName => Path.Combine(Folder,"preferences.json");
     public static UserPreferences Load()
     {

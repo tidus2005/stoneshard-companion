@@ -10,6 +10,8 @@ internal static class OfflineChecks
     public static async Task Run(string root,string? saveRunner=null)
     {
         IntentChecks.Run();
+        await SavePathChecks.Run(null,null);
+        await UpdateChecks.Run();
         int cycle=1;
         for(int i=0;i<30;i++){cycle=SpeedControl.Next(cycle);Check(cycle==((i+1)%3)+1,"HUD speed cycles 1, 2, 3 without a fourth step");}
         Check(SpeedControl.Next(4)==1&&SpeedControl.Next(0)==1,"legacy or invalid HUD speed returns to normal");
@@ -28,8 +30,8 @@ internal static class OfflineChecks
         Check(double.IsFinite(fallback.X)&&fallback.Width>=HudGeometry.MinWidth&&fallback.Height<=720,"invalid stored geometry sanitized");
         var wide=HudGeometry.Grid(900,120,12);var tall=HudGeometry.Grid(220,600,12);
         Check(wide.Columns>tall.Columns&&wide.Rows<tall.Rows,"wide and tall layouts reflow");
-        foreach(var (w,h) in new[]{(HudGeometry.MinWidth,HudGeometry.MinHeight),(650d,216d),(356d,700d),(1600d,200d)}){
-            double availableWidth=w-20-HudGeometry.NavigationSize-HudGeometry.NavigationGap,availableHeight=h-20-22-26-18;
+        foreach(var (w,h) in new[]{(HudGeometry.MinWidth,HudGeometry.MinHeight),(650d,216d),(356d,700d),(1600d,HudGeometry.MinHeight)}){
+            double availableWidth=w-20-HudGeometry.NavigationSize-HudGeometry.NavigationGap,availableHeight=h-20-HudGeometry.HeaderHeight-26-18;
             var g=HudGeometry.Grid(availableWidth,availableHeight,12);
             Check(g.Columns*g.Rows>=12&&g.CellWidth>=26&&g.CellHeight>=26&&availableHeight>=HudGeometry.NavigationSize,$"fixed left compass and 12 actions fit {w}x{h}");
         }

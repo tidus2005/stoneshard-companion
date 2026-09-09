@@ -16,6 +16,7 @@ public sealed class HudWindow : Window
     private readonly TextBlock[] values=new TextBlock[4];
     private readonly TextBlock footer=new(){FontSize=10,Foreground=Brushes.Silver,TextTrimming=TextTrimming.CharacterEllipsis};
     private readonly Button speed,drink,torch,labels;
+    private readonly Button exit=new(){Content="退出助手",FontSize=11,Padding=new Thickness(5,0,5,0),Margin=new Thickness(4,0,0,0),Focusable=false};
     private readonly Button walkKeys=new(){FontSize=11,Padding=new Thickness(5,0,5,0),Focusable=false,MinWidth=132};
     private readonly List<(Button Button,int Direction)> navigation=[];
     private bool walking;
@@ -39,11 +40,12 @@ public sealed class HudWindow : Window
         Topmost=true;ShowInTaskbar=App.UiTestMode;ShowActivated=false;FontFamily=new FontFamily("Microsoft YaHei UI");UseLayoutRounding=true;SnapsToDevicePixels=true;
         var root=new Grid();Content=root;
         var body=new Grid{Margin=new Thickness(10)};
-        foreach(var h in new[]{new GridLength(22),new GridLength(26),new GridLength(1,GridUnitType.Star),new GridLength(18)})body.RowDefinitions.Add(new RowDefinition{Height=h});
+        foreach(var h in new[]{new GridLength(HudGeometry.HeaderHeight),new GridLength(26),new GridLength(1,GridUnitType.Star),new GridLength(18)})body.RowDefinitions.Add(new RowDefinition{Height=h});
         root.Children.Add(new Border{Child=body,Background=new SolidColorBrush(Color.FromArgb(246,24,23,30)),BorderBrush=new SolidColorBrush(Color.FromRgb(109,96,116)),BorderThickness=new Thickness(2)});
         var grip=MakeThumb(HudCorner.Move,Cursors.SizeAll);
         grip.Template=TextThumbTemplate("⋮⋮   行旅辅助",false);grip.ToolTip="拖动此处移动面板；拖动四角改变大小";
-        var header=new DockPanel();DockPanel.SetDock(walkKeys,Dock.Right);header.Children.Add(walkKeys);header.Children.Add(grip);body.Children.Add(header);
+        var header=new DockPanel();DockPanel.SetDock(exit,Dock.Right);header.Children.Add(exit);DockPanel.SetDock(walkKeys,Dock.Right);header.Children.Add(walkKeys);header.Children.Add(grip);body.Children.Add(header);
+        AutomationProperties.SetName(exit,"退出助手");exit.ToolTip="完全退出助手并停止辅助功能；存档操作中会等待完成后退出";exit.Click+=(_,_)=>owner.RequestExit();
         AutomationProperties.SetName(walkKeys,"方向键自动移动");walkKeys.Click+=(_,_)=>owner.ToggleWalkKeys();
         var stats=new UniformGrid{Columns=4};Grid.SetRow(stats,1);body.Children.Add(stats);
         string[] names=["饥饿","口渴","疼痛","迷醉"],icons=["meat","water-flask","broken-heart","poison-bottle"];
@@ -75,7 +77,9 @@ public sealed class HudWindow : Window
         Add("pause-button","停止","停止行走、加速、常显和自动补给 · Ctrl+Alt+S",0,owner.Reset);
         Add("return-arrow","收起","隐藏面板 · Ctrl+Alt+O 恢复",0,owner.ToggleFold);
         AddSupplyMenu(drink,true);AddSupplyMenu(torch,false);
-        Grid.SetRow(footer,3);body.Children.Add(footer);
+        var footerRow=new DockPanel();Grid.SetRow(footerRow,3);body.Children.Add(footerRow);
+        var version=new TextBlock{Text=$"v{App.Version}",FontSize=10,Foreground=Muted,Margin=new Thickness(8,0,0,0),VerticalAlignment=VerticalAlignment.Center};
+        DockPanel.SetDock(version,Dock.Right);footerRow.Children.Add(version);footerRow.Children.Add(footer);
         foreach(var (corner,h,v,cursor) in new[]{
             (HudCorner.TopLeft,HorizontalAlignment.Left,VerticalAlignment.Top,Cursors.SizeNWSE),
             (HudCorner.TopRight,HorizontalAlignment.Right,VerticalAlignment.Top,Cursors.SizeNESW),
@@ -140,6 +144,7 @@ public sealed class HudWindow : Window
     }
     public void Update(EngineState? state,bool foreground)
     {
+        exit.Content=coordinator.ExitRequested?"等待退出":"退出助手";exit.IsEnabled=!coordinator.ExitRequested;
         bool usable=state is {Ready:true,Fresh:true,SceneReady:true,UiFlags:0}&&foreground;
         foreach(var cell in cells)cell.Button.IsEnabled=cell.Capability==0||usable&&(state!.Capabilities&cell.Capability)!=0;
         drink.IsEnabled=torch.IsEnabled=usable;
@@ -148,7 +153,7 @@ public sealed class HudWindow : Window
         bool keysActive=keysWanted&&state is {Ready:true,Fresh:true,SceneReady:true,WalkKeysEnabled:true}&&foreground&&(state.UiFlags&~8u)==0;
         walkKeys.Content=keysWanted?(keysActive?"方向键自动移动：开":"方向键自动移动：待命"):"方向键自动移动：关";
         walkKeys.Foreground=keysActive?Active:Muted;walkKeys.BorderBrush=keysWanted?Active:Muted;
-        walkKeys.ToolTip="开启后轻按 ↑ ↓ ← →，沿人物所在列或行走到边缘；贴近出口后再按同方向切图。\n途中再按方向键停步；长按不重复。仅游戏前台生效，面板内保留原按键操作。\n关闭开关会停止本模式的行走。";
+        walkKeys.ToolTip="开启后轻按 ↑ ↓ ← →，沿人物所在列或行走到边缘；到达边缘后自动点击相邻出口切图。\n途中再按方向键停步；长按不重复。仅游戏前台生效，面板内保留原按键操作。\n关闭开关会停止本模式的行走。";
         double[] readings=[state?.Hunger??double.NaN,state?.Thirst??double.NaN,state?.Pain??double.NaN,state?.Intoxication??double.NaN];
         for(int i=0;i<4;i++){bool valid=current&&(state!.VitalValid&(1u<<i))!=0&&double.IsFinite(readings[i]);values[i].Text=valid?$"{readings[i]:0}%":"—";}
         cells[0].Button.ToolTip=!current?"等待进入游戏":state!.VisorState<0?"当前头盔没有可开合面甲":state.VisorState==1?"面甲已打开 · 点击关闭":"面甲已关闭 · 点击打开";
@@ -176,6 +181,7 @@ public sealed class HudWindow : Window
         // Keep backup progress/results visible even after a completed journey.
         footer.Text=coordinator.Saves.Busy?coordinator.SaveStatus:walking?state!.WalkStatus:!current||coordinator.SaveStatus!="备份保存已落盘的进度"?coordinator.SaveStatus:state!.WalkState>1?state.WalkStatus:coordinator.Preferences.AutoDrink||coordinator.Preferences.AutoTorch?coordinator.SupplyStatus:coordinator.SaveStatus;
         footer.ToolTip=footer.Text;
+        if(coordinator.ExitRequested)footer.Text="存档操作完成后自动退出助手…";
     }
     public void Place(Native.Rect bounds,nint gameWindow)
     {
@@ -196,7 +202,9 @@ public sealed class HudWindow : Window
     private void ApplyPlacement()
     {
         if(handle==0)return;
-        Native.SetWindowPos(handle,(nint)(-1),originX+(int)Math.Round(placement.X*dpi),originY+(int)Math.Round(placement.Y*dpi),(int)Math.Round(placement.Width*dpi),(int)Math.Round(placement.Height*dpi),0x10);
+        // Topmost is established once by WPF. Moving every poll must preserve
+        // z-order so owned dialogs, context menus and tooltips remain above us.
+        Native.SetWindowPos(handle,0,originX+(int)Math.Round(placement.X*dpi),originY+(int)Math.Round(placement.Y*dpi),(int)Math.Round(placement.Width*dpi),(int)Math.Round(placement.Height*dpi),0x14);
     }
     private void SavePlacement()
     {

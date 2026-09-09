@@ -151,7 +151,7 @@ static LRESULT CALLBACK bridge_proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
     }
     if(msg==WM_LBUTTONDOWN||msg==WM_RBUTTONDOWN||msg==WM_MBUTTONDOWN||
        (msg==WM_KEYDOWN&&wp!=VK_MENU&&wp!=VK_CONTROL&&wp!=VK_SHIFT))
-        if(shared->walk_state==WALK_ACTIVE&&!in_callback){
+        if(shared->walk_state==WALK_ACTIVE&&!in_callback&&!(msg==WM_LBUTTONDOWN&&(ULONG_PTR)GetMessageExtraInfo()==WALK_MOUSE_MARKER)){
             // Stop our old path before forwarding this input. The native event
             // may then start its replacement path without a later timer killing it.
             in_callback=true;void* saved_self=*(void**)(game+0x990b738);
@@ -208,7 +208,7 @@ __declspec(dllexport) DWORD WINAPI BridgeStart(void* ignored) {
     // Startup can expose a window before the frame manager is initialized.
     // Do not publish a mapping until a valid baseline exists; allow a later retry.
     baseline=get_speed();if(!isfinite(baseline)||baseline<1 || baseline>240)return start_failed(15);
-    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v8.%lu",GetCurrentProcessId());
+    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v9.%lu",GetCurrentProcessId());
     mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,NULL,PAGE_READWRITE,0,4096,name);
     if(!mapping)return start_failed(12);
     if(GetLastError()==ERROR_ALREADY_EXISTS)return start_failed(13);

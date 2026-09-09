@@ -52,13 +52,23 @@ static bool native_exit_target(int direction,double x,double y,double* tx,double
     return fabs(*tx-x)<=52.5&&fabs(*ty-y)<=52.5;
 }
 static bool native_center_reachable(RV player,double x,double y){center_queries++;return (x-1183)*(x-1183)+(y-1183)*(y-1183)>=center_min_distance;}
-static void native_activate_exit(RV player){exit_calls++;}
+static bool click_ok=true; static bool native_click_exit(RV player,int direction){if(!click_ok)return false;exit_calls++;return true;}
 #include "../Bridge/highlight.h"
 #include "../Bridge/walk.h"
 static void check(bool ok,const char* name){if(!ok){fprintf(stderr,"FAIL %s\n",name);exit(1);}printf("PASS %s\n",name);passed++;}
-static void reset(void){memset(shared,0,sizeof(*shared));shared->ready=shared->scene_ready=1;shared->scene_generation=2;shared->window_generation=1;shared->map_w=shared->map_h=2340;shared->player_x=px=500;shared->player_y=py=500;idle=valid=can_act=true;enemy=damage=injury=false;player_id=100;path=-1;move_calls=stop_calls=0;test_now=10000;walk_dispatch_pending=test_modifiers_down=false;exit_exists=true;exit_inset=center_min_distance=0;exit_calls=center_queries=0;}
+static void reset(void){memset(shared,0,sizeof(*shared));shared->ready=shared->scene_ready=1;shared->scene_generation=2;shared->window_generation=1;shared->map_w=shared->map_h=2340;shared->player_x=px=500;shared->player_y=py=500;idle=valid=can_act=true;enemy=damage=injury=false;player_id=100;path=-1;move_calls=stop_calls=0;test_now=10000;walk_dispatch_pending=test_modifiers_down=false;click_ok=true;exit_exists=true;exit_inset=center_min_distance=0;exit_calls=center_queries=0;}
 static int begin(int d){int result=start_walk(d);test_now+=200;reconcile_walk(0);return result;}
 int main(void){
+    double mx,my;
+    for(int d=1;d<=4;d++){
+        check(exit_click_point(d,507,767,27,497,960,540,1920,1080,&mx,&my)&&mx==(d==3?908:d==4?1012:960)&&my==(d==1?488:d==2?592:540),"adjacent cell projects correctly in all four directions at 2x scale");
+        check(exit_click_point(d+10,507,767,27,497,960,540,1280,720,&mx,&my),"keyboard projection supports fractional VM scaling");
+    }
+    check(!exit_click_point(1,0,0,0,0,960,540,1920,1080,&mx,&my),"offscreen adjacent cell is never clicked");
+    check(!exit_click_point(1,507,767,27,497,960,540,1024,768,&mx,&my),"unknown letterboxed viewport is rejected");
+    check(!exit_click_point(1,NAN,767,27,497,960,540,1920,1080,&mx,&my)&&!exit_click_point(5,507,767,27,497,960,540,1920,1080,&mx,&my),"invalid click geometry is rejected");
+    reset();click_ok=false;shared->player_x=px=507;shared->player_y=py=13;begin(11);
+    check(shared->walk_state==WALK_BLOCKED&&exit_calls==0,"rejected mouse injection ends route without retries");
     original_label_renderer=fake_draw;
     RV out={0},input=numeric(0),second=numeric(9);RV* args[]={&input,&second};
     reconcile_highlight(true);query_labels_at(0x3992a2f,NULL,NULL,&out,2,args);check(out.real==1&&input.real==0&&second.real==9,"label override preserves caller arguments");
@@ -132,8 +142,9 @@ int main(void){
         reset();shared->player_x=px=507;shared->player_y=py=767;begin(d);
         double ex=d==13?39:d==14?2301:507,ey=d==11?39:d==12?2301:767;
         check(move_calls==1&&sent_x==ex&&sent_y==ey,"relative arrow route preserves character row or column");
-        px=sent_x;py=sent_y;reconcile_walk(0);test_now+=5000;reconcile_walk(0);
-        check(shared->walk_state==WALK_ARRIVED&&move_calls==1,"relative arrival does not cross map or restart");
+        px=sent_x;py=sent_y;reconcile_walk(0);test_now+=200;reconcile_walk(0);
+        check(shared->walk_state==WALK_ACTIVE&&move_calls==2&&sent_x==(d==13?13:d==14?2327:507)&&sent_y==(d==11?13:d==12?2327:767),"relative arrival automatically preserves row or column through exit");
+        px=sent_x;py=sent_y;reconcile_walk(0);reconcile_walk(0);check(exit_calls==1,"outward adjacent click dispatched once");
     }
     reset();shared->map_w=2600;shared->map_h=1560;begin(9);
     check(sent_x==2561&&sent_y==1521,"rectangular maps use independent dimensions");
@@ -198,11 +209,11 @@ int main(void){
         check(move_calls==2&&stop_calls==0&&shared->walk_phase==1,"second press at arrival dispatches exit even before timer acknowledgement");
     }
     reset();set_walk_keys(true);begin(11);shared->player_x=px=sent_x;shared->player_y=py=sent_y;reconcile_walk(0);
-    check(shared->walk_state==WALK_ARRIVED&&move_calls==1,"initial relative journey still stops at edge");
+    check(shared->walk_state==WALK_ACTIVE&&walk_dispatch_pending&&move_calls==1,"relative arrival queues automatic exit");
     handle_walk_key(VK_UP,true,false,true,true);test_now+=300;reconcile_walk(0);
-    check(move_calls==1&&shared->walk_state==WALK_ARRIVED,"arrival with key still held never exits automatically");
-    handle_walk_key(VK_UP,false,false,true,true);test_now+=200;reconcile_walk(0);
-    check(move_calls==2&&shared->walk_phase==1&&sent_y==13,"new physical press after recorded arrival clicks exit");
+    check(move_calls==2&&shared->walk_state==WALK_ACTIVE,"held key does not block automatic exit");
+    test_now+=200;reconcile_walk(0);
+    check(move_calls==2&&shared->walk_phase==1&&sent_y==13,"automatic exit requires no second physical press");
     reset();request_walk(1);request_walk(2);test_now+=200;reconcile_walk(0);
     check(shared->walk_state==WALK_MANUAL&&move_calls==0,"grid second click cancels pending route instead of replacing it");
     reset();begin(1);request_walk(2);

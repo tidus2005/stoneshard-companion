@@ -22,7 +22,7 @@ public sealed class SaveWindow : Window
     private bool loadingHistory,historyQueued,closed;
     public SaveWindow(MainWindow owner)
     {
-        coordinator=owner;Title=$"晶石助手 {System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3)} · 存档管理";Width=840;Height=680;MinWidth=520;MinHeight=500;WindowStartupLocation=WindowStartupLocation.CenterScreen;
+        coordinator=owner;Title=$"晶石助手 v{App.Version} · 存档管理";Width=840;Height=680;MinWidth=520;MinHeight=500;WindowStartupLocation=WindowStartupLocation.CenterScreen;
         Background=new SolidColorBrush(Color.FromRgb(25,23,31));Foreground=Brushes.Wheat;FontFamily=new FontFamily("Microsoft YaHei UI");
         var body=new Grid{Margin=new Thickness(22)};Content=new ScrollViewer{Content=body,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
         SizeChanged+=(_,_)=>history.Height=Math.Clamp(ActualHeight-400,140,450);

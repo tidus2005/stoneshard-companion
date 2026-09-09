@@ -1,5 +1,5 @@
 #pragma once
-// Cardinal grid journeys cross once; center, corners and keyboard journeys
+// Cardinal grid and keyboard journeys cross once; center and corners
 // stop at their target. Never retry an interrupted route or chain maps.
 enum { WALK_NONE=0,WALK_ACTIVE=1,WALK_ARRIVED=2,WALK_MANUAL=3,WALK_THREAT=4,
        WALK_UI=5,WALK_SCENE=6,WALK_BLOCKED=7,WALK_BACKGROUND=8,WALK_TIMEOUT=9 };
@@ -21,7 +21,7 @@ static void prepare_center(double x,double y){
         walk_centers[at]=c;
     }
 }
-static bool walk_crosses_map(int direction){return direction>=1&&direction<=4;}
+static bool walk_crosses_map(int direction){return (direction>=1&&direction<=4)||(direction>=11&&direction<=14);}
 static bool walk_modifiers_down(void){
 #ifdef COMPANION_NATIVE_TEST
     return test_modifiers_down;
@@ -29,6 +29,7 @@ static bool walk_modifiers_down(void){
     return ((GetAsyncKeyState(VK_CONTROL)|GetAsyncKeyState(VK_MENU)|GetAsyncKeyState(VK_SHIFT)|GetAsyncKeyState(VK_LWIN)|GetAsyncKeyState(VK_RWIN))&0x8000)!=0;
 #endif
 }
+#include "walk_click.h"
 static bool walk_target(int direction,double width,double height,bool outer,double* x,double* y){
     if(direction<1||direction>9||!isfinite(width)||!isfinite(height)||width<104||height<104||width>26000||height>26000)return false;
     int cols=(int)floor(width/26),rows=(int)floor(height/26);
@@ -41,7 +42,7 @@ static bool walk_target(int direction,double width,double height,bool outer,doub
     return true;
 }
 // Keyboard routes preserve the character's column/row, independent of camera.
-// They stop on the inner boundary. A fresh press there requests one exit click.
+// Arrival at the inner boundary automatically continues through the exit.
 static bool walk_destination(int direction,double* x,double* y){
     bool relative=direction>=11&&direction<=14;
     if(!walk_target(relative?direction-10:direction,shared->map_w,shared->map_h,false,x,y))return false;
@@ -96,7 +97,7 @@ static int start_walk(int direction){
     if(direction==5)prepare_center(x,y);
     if(!exit&&fabs(shared->player_x-x)<2&&fabs(shared->player_y-y)<2){
         if(!walk_crosses_map(direction)){shared->walk_state=WALK_ARRIVED;release_value(&player);return 0;}
-        walk_target(direction,shared->map_w,shared->map_h,true,&shared->walk_x,&shared->walk_y);shared->walk_phase=1;
+        walk_target(direction>=11?direction-10:direction,shared->map_w,shared->map_h,true,&shared->walk_x,&shared->walk_y);shared->walk_phase=1;
     }
     walk_player_id=member_number(player,"id");walk_scene=shared->scene_generation;walk_window=shared->window_generation;
     walk_started=walk_progress=GetTickCount64();walk_last_x=shared->player_x;walk_last_y=shared->player_y;
@@ -152,7 +153,7 @@ static void reconcile_walk(uint32_t reasons){
             double tx,ty,px=member_number(player,"x"),py=member_number(player,"y");
             if(!native_exit_target(shared->walk_direction,px,py,&tx,&ty)){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}
             shared->walk_x=tx;shared->walk_y=ty;
-            if(fabs(px-tx)<2&&fabs(py-ty)<2){native_activate_exit(player);walk_exit_activated=true;release_value(&player);walk_dispatch_pending=false;walk_progress=walk_started=GetTickCount64();return;}
+            if(fabs(px-tx)<2&&fabs(py-ty)<2){if(!native_click_exit(player,shared->walk_direction)){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}walk_exit_activated=true;release_value(&player);walk_dispatch_pending=false;walk_progress=walk_started=GetTickCount64();return;}
         }
         restore_camera(true);
         RV args[2]={numeric(shared->walk_x),numeric(shared->walk_y)},out=call_script(0x1805180,player,2,args);
@@ -168,7 +169,7 @@ static void reconcile_walk(uint32_t reasons){
         if(shared->walk_phase==0&&!walk_crosses_map(shared->walk_direction)){finish_walk(WALK_ARRIVED,false);return;}
         if(shared->walk_phase==0){
             if(!safe){finish_walk(WALK_BLOCKED,false);return;}
-            if(!walk_target(shared->walk_direction,shared->map_w,shared->map_h,true,&shared->walk_x,&shared->walk_y)){finish_walk(WALK_BLOCKED,false);return;}
+            if(!walk_target(walk_cardinal(shared->walk_direction),shared->map_w,shared->map_h,true,&shared->walk_x,&shared->walk_y)){finish_walk(WALK_BLOCKED,false);return;}
             shared->walk_phase=1;walk_dispatch_pending=true;walk_started=walk_progress=now;
             shared->supply_flags&=~3u;return;
         }
@@ -178,8 +179,8 @@ static void reconcile_walk(uint32_t reasons){
             double tx,ty;
             if(!native_exit_target(shared->walk_direction,x,y,&tx,&ty)||fabs(x-tx)>=2||fabs(y-ty)>=2){finish_walk(WALK_BLOCKED,false);return;}
             RV current=find_instance("o_player");
-            if(valid_object(current)&&member_number(current,"id")==walk_player_id&&supply_safe(current))native_activate_exit(current);
-            release_value(&current);walk_exit_activated=true;walk_progress=now;
+            bool clicked=valid_object(current)&&member_number(current,"id")==walk_player_id&&supply_safe(current)&&native_click_exit(current,shared->walk_direction);
+            release_value(&current);if(!clicked){finish_walk(WALK_BLOCKED,false);return;}walk_exit_activated=true;walk_progress=now;
         }
         if(now-walk_progress>2000)finish_walk(WALK_BLOCKED,false);
         return;

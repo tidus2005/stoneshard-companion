@@ -19,6 +19,15 @@ public partial class MainWindow : Window
     private readonly SupplyPolicy supply=new();
     public SaveManagerService Saves {get;private set;}=null!;
     public string SaveStatus {get;private set;}="备份保存已落盘的进度";
+    public bool ExitRequested {get;private set;}
+    public AppUpdater Updater {get;}
+    public bool CanInstallUpdate {
+        get {
+            if(closing||busy||Saves.Busy)return false;
+            var games=Process.GetProcessesByName("StoneShard");bool idle=games.Length==0;foreach(var game in games)game.Dispose();return idle;
+        }
+    }
+    public void RefreshUpdateStatus()=>settings?.RefreshUpdate(Updater.Status);
     public string SupplyStatus=>supply.Status;
     private SaveWindow? savesWindow;
     private readonly Forms.NotifyIcon tray;
@@ -34,8 +43,8 @@ public partial class MainWindow : Window
     private readonly Dictionary<int,(uint Key,Action Action)> shortcuts=[];
     public MainWindow()
     {
-        Saves=new(backupRoot:Preferences.BackupFolder);
-        InitializeComponent();hud=new(this);
+        Saves=App.UiTestMode?new(saveRoot:Path.Combine(UserPreferences.Folder,"StoneShard"),backupRoot:Path.Combine(UserPreferences.Folder,"Backups")):new(backupRoot:Preferences.BackupFolder);
+        InitializeComponent();hud=new(this);Updater=new(this);
         tray=new Forms.NotifyIcon{Text="晶石助手 · 行旅辅助",Icon=System.Drawing.SystemIcons.Application,Visible=true};
         var menu=new Forms.ContextMenuStrip();
         menu.Items.Add("设置与快捷键",null,(_,_)=>Dispatcher.Invoke(OpenSettings));
@@ -43,11 +52,11 @@ public partial class MainWindow : Window
         menu.Items.Add("存档管理",null,(_,_)=>Dispatcher.Invoke(OpenSaves));
         menu.Items.Add("显示 / 隐藏增强栏",null,(_,_)=>Dispatcher.Invoke(ToggleFold));
         menu.Items.Add("停止并恢复正常",null,(_,_)=>Dispatcher.Invoke(Reset));
-        menu.Items.Add("退出",null,(_,_)=>Dispatcher.Invoke(Close));tray.ContextMenuStrip=menu;
+        menu.Items.Add("退出助手",null,(_,_)=>Dispatcher.Invoke(RequestExit));tray.ContextMenuStrip=menu;
         tray.DoubleClick+=(_,_)=>Dispatcher.Invoke(OpenSettings);
         SourceInitialized+=InitializeNative;Closing+=OnClosing;
         poll.Tick+=async(_,_)=>await PollAsync();
-        Loaded+=async(_,_)=>{Hide();RefreshHud(null);poll.Start();await PollAsync();};
+        Loaded+=async(_,_)=>{Hide();RefreshHud(null);poll.Start();Updater.Start();await PollAsync();};
     }
     private void InitializeNative(object? sender,EventArgs e)
     {
@@ -60,6 +69,7 @@ public partial class MainWindow : Window
         shortcuts[16]=(0x23,()=>Walk(0));
         shortcuts[17]=(0x24,()=>Walk(5));
         shortcuts[9]=(0x57,()=>RunAction(EngineCommand.Drink));shortcuts[10]=(0x54,()=>RunAction(EngineCommand.Torch));shortcuts[11]=(0x42,()=>Backup(false));
+        if(App.UiTestMode)return;
         bool stopKey=Native.RegisterHotKey(hwnd,20,0x4003,0x53),foldKey=Native.RegisterHotKey(hwnd,21,0x4003,0x4F);
         if(!stopKey||!foldKey)ShowError("恢复或隐藏快捷键被占用，请从系统托盘操作。");
     }
@@ -89,7 +99,7 @@ public partial class MainWindow : Window
             if(now>=nextDiscovery){
                 nextDiscovery=now+1000;
                 if(!ProcessAlive()){bridge?.Dispose();bridge=null;session=null;supply.Reset();}
-                var games=GameSession.Discover();
+                var games=App.UiTestMode?new List<GameSession>():GameSession.Discover();
                 if(session is null){
                     var found=games.FirstOrDefault(g=>g.IsForeground)??(games.Count==1?games[0]:null);
                     if(found is not null){session=found;intent.BeginSession(found.Key,Preferences.RememberSpeed,Preferences.LastSpeed);connectFailures=0;nextConnect=0;unsupportedSession=null;resetPending=false;lastScene=lastWindow=0;UserPreferences.Log($"session {found.Key}");}
@@ -220,17 +230,19 @@ public partial class MainWindow : Window
     }
     public void OpenSettings()
     {
-        if(settings is null){settings=new SettingsWindow(this);settings.Closed+=(_,_)=>settings=null;settings.Show();}else settings.Activate();
+        if(closing)return;
+        if(settings is null){settings=new SettingsWindow(this){Owner=hud,Topmost=true};settings.Closed+=(_,_)=>settings=null;settings.Show();}else settings.Activate();
     }
     public void ResetLayout(){Preferences.HasHudPlacement=false;SavePreferences();}
     public void OpenSaves()
     {
-        if(savesWindow is null){savesWindow=new SaveWindow(this);savesWindow.Closed+=(_,_)=>savesWindow=null;savesWindow.Show();}else savesWindow.Activate();
+        if(closing)return;
+        if(savesWindow is null){savesWindow=new SaveWindow(this){Owner=hud,Topmost=true};savesWindow.Closed+=(_,_)=>savesWindow=null;savesWindow.Show();}else savesWindow.Activate();
     }
     public async void Backup(bool latest)=>await SaveAsync(latest?SaveOperation.Latest:SaveOperation.Backup);
     public async Task SaveAsync(SaveOperation operation,string? archive=null)
     {
-        if(Saves.Busy)return;
+        if(Saves.Busy||ExitRequested||closing||Updater.Installing)return;
         var progress=new Progress<string>(message=>{SaveStatus=message;savesWindow?.Refresh(false);});
         SaveStatus=operation==SaveOperation.Restore?"正在准备还原…":"正在准备备份…";savesWindow?.Refresh();
         try{
@@ -238,13 +250,20 @@ public partial class MainWindow : Window
             SaveStatus=operation==SaveOperation.Restore?$"文件还原完成 · {result.Files} 个文件校验通过；游戏读档尚需确认":$"备份成功 · {DateTime.Now:HH:mm:ss} · {result.Files} 个文件";
             UserPreferences.Log($"save {operation} verified files={result.Files} archive={result.Archive}");
         }catch(Exception e){SaveStatus="存档操作失败："+e.Message;ShowError(SaveStatus);}
-        finally{savesWindow?.Refresh();}
+        finally{savesWindow?.Refresh();if(ExitRequested)Close();}
+    }
+    public void RequestExit()
+    {
+        if(closing)return;
+        ExitRequested=true;
+        if(Saves.Busy){SetStatus("存档操作完成后自动退出助手…");return;}
+        Close();
     }
     public void ShowError(string error){SetStatus(error);UserPreferences.Log("error "+error);tray.BalloonTipTitle="晶石助手";tray.BalloonTipText=error;tray.ShowBalloonTip(3500);}
     private async void OnClosing(object? sender,CancelEventArgs e)
     {
-        if(closed)return;e.Cancel=true;if(closing)return;if(Saves.Busy){ShowError("存档操作正在进行，请完成后退出助手。");return;}closing=true;poll.Stop();RegisterKeys(false);HideHud();
-        intent.Stop();
+        if(closed)return;e.Cancel=true;if(closing)return;if(Saves.Busy){RequestExit();return;}closing=true;poll.Stop();RegisterKeys(false);HideHud();
+        Updater.Dispose();intent.Stop();
         try{if(bridge is not null)await bridge.SendAsync(EngineCommand.Reset);}catch(Exception ex){UserPreferences.Log("exit-reset "+ex.Message);}
         finally{bridge?.Dispose();Native.UnregisterHotKey(hwnd,20);Native.UnregisterHotKey(hwnd,21);tray.Dispose();settings?.Close();savesWindow?.Close();hud.Close();closed=true;_=Dispatcher.BeginInvoke(Close);}
     }

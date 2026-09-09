@@ -5,7 +5,7 @@ internal static class Observation
 {
     public static object Read(GameSession session)
     {
-        using var map=MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v8.{session.Pid}",MemoryMappedFileRights.Read);
+        using var map=MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v9.{session.Pid}",MemoryMappedFileRights.Read);
         using var view=map.CreateViewAccessor(0,4096,MemoryMappedFileAccess.Read);
         for(int attempt=0;attempt<30;attempt++){
             int before=view.ReadInt32(56);if((before&1)!=0){Thread.Sleep(1);continue;}
