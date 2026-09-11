@@ -62,6 +62,8 @@ static void refresh_telemetry(bool play,RV player){
             tj("{\"key\":");tq(text_value(key));tj(",\"name\":");tq(text_value(label));tj(",\"value\":");tn(member_number(item,"fodder_value"));tj("}");release_value(&key);release_value(&label);
         }release_value(&item);
     }
-    tj("],\"foodsComplete\":");tj(foods_complete?"true":"false");append_journey(player);tj("}");if(telemetry_full)shared->telemetry[0]=0;else memcpy(shared->telemetry,telemetry_buffer,telemetry_at+1);
+    tj("],\"foodsComplete\":");tj(foods_complete?"true":"false");append_journey(player);
+    tj(",\"automationFlags\":");tn(automation_flags);tj(",\"foragePhase\":");tn(forage_phase);tj(",\"forageCount\":");tn(forage_count);
+    tj("}");if(telemetry_full)shared->telemetry[0]=0;else memcpy(shared->telemetry,telemetry_buffer,telemetry_at+1);
 }
 #include "fodder.h"

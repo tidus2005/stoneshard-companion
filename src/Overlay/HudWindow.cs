@@ -17,7 +17,7 @@ public sealed class HudWindow : Window
     private readonly List<(Button Button,FrameworkElement Icon,TextBlock Label,uint Capability)> cells=[];
     private readonly TextBlock[] values=new TextBlock[4];
     private readonly TextBlock footer=new(){FontSize=10,Foreground=Brushes.Silver,TextTrimming=TextTrimming.CharacterEllipsis};
-    private readonly Button speed,drink,torch,labels;
+    private readonly Button speed,drink,torch,labels,autoVisor;
     private readonly JourneyEstimator estimator=new();
     private readonly TextBlock provisions=new(){FontSize=11,Foreground=Brushes.Wheat,TextTrimming=TextTrimming.CharacterEllipsis};
     private readonly TextBlock equipment=new(){FontSize=11,Foreground=Brushes.Silver,TextTrimming=TextTrimming.CharacterEllipsis};
@@ -71,10 +71,11 @@ public sealed class HudWindow : Window
         }
         actionArea.Children.Add(compass);Grid.SetColumn(actions,1);actionArea.Children.Add(actions);
         Add("visored-helm","面甲","开合面甲 · Ctrl+Alt+H",4,()=>owner.RunAction(EngineCommand.Visor));
+        autoVisor=Add("visored-helm","自动面罩","遇敌关闭，安全时打开；手动开合会关闭自动模式",4,owner.ToggleAutoVisor);
         drink=Add("water-flask","喝水","一键喝水 · 右键设置自动喝水",16,()=>owner.RunAction(EngineCommand.Drink));
         torch=Add("torch","火把","切换火把 · 右键设置自动保持点亮",32,()=>owner.RunAction(EngineCommand.Torch));
         labels=Add("eye-shield","常显","物品常显 · Ctrl+Alt+L",0,owner.ToggleLabels);
-        Add("eye-target","地图中心","镜头移到地图中心 · Ctrl+Alt+C",2,()=>owner.RunAction(EngineCommand.Center));
+        Add("eye-target","地图中心","人物走向中心；中心被挡时向外顺时针寻找可达空格 · Ctrl+Alt+Home",2,()=>owner.Walk(5));
         Add("crosshair","角色视角","镜头回到角色 · Ctrl+Alt+R",2,()=>owner.RunAction(EngineCommand.Player));
         speed=Add("speed-normal","1×","正常 → 加速 2× → 急速 3×，点击直接切换",0,()=>owner.ChooseSpeed(SpeedControl.Next(owner.PreferredSpeed)));
         Add("save-backup","备份","一键备份已落盘的存档",0,()=>owner.Backup(false));
@@ -143,7 +144,7 @@ public sealed class HudWindow : Window
     {
         var grid=HudGeometry.Grid(actions.ActualWidth,actions.ActualHeight,cells.Count);actions.Columns=grid.Columns;actions.Rows=grid.Rows;
         foreach(var cell in cells){cell.Icon.Width=cell.Icon.Height=Math.Clamp(grid.CellHeight-18,12,30);cell.Label.Visibility=grid.CellWidth>=80?Visibility.Visible:Visibility.Collapsed;cell.Label.FontSize=grid.CellWidth<100?11:12;}
-        cells[6].Icon.Visibility=Visibility.Visible;
+        cells.First(c=>c.Button==speed).Icon.Visibility=Visibility.Visible;
     }
     private void AddSupplyMenu(Button button,bool water)
     {
@@ -156,6 +157,10 @@ public sealed class HudWindow : Window
     public void Update(EngineState? state,bool foreground,int gamePid)
     {
         if(estimatePid!=gamePid){estimatePid=gamePid;estimator.Reset();}
+        autoVisor.Background=coordinator.Preferences.AutoVisor?Active:Brushes.Transparent;
+        ((System.Windows.Shapes.Path)cells.First(c=>c.Button==autoVisor).Icon).Fill=coordinator.Preferences.AutoVisor?Brushes.Black:Muted;
+        autoVisor.ToolTip=$"自动面罩：{(coordinator.Preferences.AutoVisor?"开":"关")} · 遇敌关闭，安全时打开；手动开合会关闭自动模式";
+        AutomationProperties.SetName(autoVisor,$"自动面罩：{(coordinator.Preferences.AutoVisor?"开":"关")}");
         exit.Content=coordinator.ExitRequested?"等待退出":"退出助手";exit.IsEnabled=!coordinator.ExitRequested;
         Native.GetWindowThreadProcessId(Native.GetForegroundWindow(),out var foregroundPid);
         bool ownedForeground=foregroundPid==Environment.ProcessId;
@@ -167,25 +172,25 @@ public sealed class HudWindow : Window
         bool keysActive=keysWanted&&state is {Ready:true,Fresh:true,SceneReady:true,WalkKeysEnabled:true}&&foreground&&(state.UiFlags&~8u)==0;
         walkKeys.Content=keysWanted?(keysActive?"方向键自动移动：开":"方向键自动移动：待命"):"方向键自动移动：关";
         walkKeys.Foreground=keysActive?Active:Muted;walkKeys.BorderBrush=keysWanted?Active:Muted;
-        walkKeys.ToolTip="开启后轻按 ↑ ↓ ← →，沿人物所在列或行走到边缘；到达边缘后自动点击相邻出口切图。\n途中再按方向键停步；长按不重复。仅游戏前台生效，面板内保留原按键操作。\n关闭开关会停止本模式的行走。";
+        walkKeys.ToolTip="开启后轻按 ↑ ↓ ← →；同时按两方向键（例如 ↑＋←）斜向行走。到达边缘后自动点击相邻出口切图。\n途中再按方向键停步；长按不重复。仅游戏前台生效，面板内保留原按键操作。\n关闭开关会停止本模式的行走。";
         double[] readings=[state?.Hunger??double.NaN,state?.Thirst??double.NaN,state?.Pain??double.NaN,state?.Intoxication??double.NaN];
         for(int i=0;i<4;i++){bool valid=current&&(state!.VitalValid&(1u<<i))!=0&&double.IsFinite(readings[i]);values[i].Text=valid?$"{readings[i]:0}%":"—";}
         cells[0].Button.ToolTip=!current?"等待进入游戏":state!.VisorState<0?"当前头盔没有可开合面甲":state.VisorState==1?"面甲已打开 · 点击关闭":"面甲已关闭 · 点击打开";
-        cells[1].Label.Text=current?$"水 {state!.WaterUses}":"喝水";cells[2].Label.Text=current?(state!.TorchState==1?"已点亮":$"火把 {state.TorchCount}"):"火把";
+        cells[2].Label.Text=current?$"水 {state!.WaterUses}":"喝水";cells[3].Label.Text=current?(state!.TorchState==1?"已点亮":$"火把 {state.TorchCount}"):"火把";
         drink.ToolTip=$"{(current?$"饮水剩余 {state!.WaterUses} 次":"等待进入游戏")}\n自动喝水：{(coordinator.Preferences.AutoDrink?"开启":"关闭")}，右键切换";
         torch.ToolTip=$"{(current?$"可用火把 {state!.TorchCount} 个":"等待进入游戏")}\n自动保持点亮：{(coordinator.Preferences.AutoTorch?"开启":"关闭")}，右键切换";
         drink.BorderBrush=coordinator.Preferences.AutoDrink?Active:Muted;torch.BorderBrush=coordinator.Preferences.AutoTorch?Active:Muted;
         labels.BorderBrush=coordinator.Preferences.ShowLabels?Active:Muted;
         labels.ToolTip=coordinator.Preferences.ShowLabels?(current&&state!.HighlightApplied?"物品常显已开启":"物品常显已记住，等待游戏恢复"):"开启物品常显 · Ctrl+Alt+L";
-        cells[6].Label.Visibility=Visibility.Visible;cells[6].Label.Text=$"{coordinator.PreferredSpeed}×";
+        cells[7].Label.Visibility=Visibility.Visible;cells[7].Label.Text=$"{coordinator.PreferredSpeed}×";
         if(speedShown!=coordinator.PreferredSpeed){
             speedShown=coordinator.PreferredSpeed;
-            ((System.Windows.Shapes.Path)cells[6].Icon).Data=((System.Windows.Shapes.Path)HudIcon.Create(SpeedControl.Icon(speedShown))).Data;
+            ((System.Windows.Shapes.Path)cells[7].Icon).Data=((System.Windows.Shapes.Path)HudIcon.Create(SpeedControl.Icon(speedShown))).Data;
         }
         speed.ToolTip=$"当前：{SpeedControl.Name(speedShown)} {speedShown}×\n点击切换：{SpeedControl.Name(SpeedControl.Next(speedShown))} {SpeedControl.Next(speedShown)}×\n正常 → 加速 → 急速 → 正常，不弹出菜单";
         AutomationProperties.SetName(speed,$"速度：{SpeedControl.Name(speedShown)} {speedShown}倍");
         speed.Foreground=current&&state!.SuspendReasons==0&&Math.Abs(state.Multiplier-coordinator.PreferredSpeed)<.01?Active:Muted;
-        cells[7].Button.IsEnabled=!coordinator.Saves.Busy;
+        cells[8].Button.IsEnabled=!coordinator.Saves.Busy;
         walking=current&&state!.WalkState==1;
         foreach(var (button,direction) in navigation){
             button.IsEnabled=state is not null&&HudPolicy.CanWalk(state.Ready,state.Fresh,state.SceneReady,foreground||ownedForeground,state.UiFlags)&&(state.Capabilities&64)!=0;

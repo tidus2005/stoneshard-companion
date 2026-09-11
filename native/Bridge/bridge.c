@@ -24,6 +24,9 @@ static UINT_PTR rebind_timer;
 static DWORD window_thread;
 static UINT_PTR tick_timer;
 static bool in_callback;
+static unsigned automation_flags;
+static int forage_phase,forage_count;
+static char automation_selection[2048];
 static RV numeric(double d){ RV v={0};v.real=d;return v; }
 #include "gm.h"
 static double get_speed(void) {
@@ -38,6 +41,7 @@ static void set_speed(double fps) {
 #include "highlight.h"
 #include "walk_native.h"
 #include "walk.h"
+#include "automation.h"
 static void reconcile_speed(void){
     DWORD pid=0;GetWindowThreadProcessId(GetForegroundWindow(),&pid);
     uint64_t heartbeat=(uint64_t)InterlockedCompareExchange64(&shared->heartbeat,0,0);
@@ -45,7 +49,7 @@ static void reconcile_speed(void){
     if(pid!=GetCurrentProcessId())reasons|=1;
     if(!shared->scene_ready)reasons|=2;
     if(shared->ui_flags&(2|4|16|32))reasons|=4;
-    if(GetTickCount64()>heartbeat+1500){reasons|=8;preferred=1;auto_center=false;highlight_requested=false;shared->walk_keys_enabled=0;}
+    if(GetTickCount64()>heartbeat+1500){reasons|=8;preferred=1;auto_center=false;highlight_requested=false;shared->walk_keys_enabled=0;automation_flags=0;}
     shared->suspend_reasons=reasons;shared->preferred_multiplier=preferred;
     if(!reasons){
         double target=baseline*preferred;
@@ -62,7 +66,9 @@ static void reconcile_speed(void){
     reconcile_highlight(highlight_allowed(highlight_requested,reasons,shared->ui_flags));
     shared->highlight_state=highlight_requested?1:0;
     shared->highlight_applied=highlight_applied?1:0;
-    reconcile_walk(reasons);
+    if(reasons)walk_held_keys=0;
+    reconcile_visor(reasons);
+    if(!reconcile_forage(reasons))reconcile_walk(reasons);
 }
 static void publish(int error,const char* message) {
     InterlockedIncrement(&shared->status_seq);
@@ -98,7 +104,7 @@ static void on_command(void) {
         if(!isfinite(arg)||arg<1 || arg>4 || floor(arg)!=arg)publish(4,"Invalid multiplier");
         else {preferred=arg;publish(0,"Preferred engine speed applied");}
     }
-    else if(cmd==CMD_RESET){finish_walk(WALK_MANUAL,true);set_walk_keys(false);preferred=1;auto_center=false;highlight_requested=false;set_speed(baseline);restore_camera(false);publish(0,"Normal speed and camera restored");}
+    else if(cmd==CMD_RESET){automation_flags=0;forage_phase=0;finish_walk(WALK_MANUAL,true);set_walk_keys(false);preferred=1;auto_center=false;highlight_requested=false;set_speed(baseline);restore_camera(false);publish(0,"Normal speed and camera restored");}
     else if(cmd==9){restore_camera(false);publish(0,"Background state restored; preference retained");}
     else if(cmd==CMD_CENTER){bool ok=center_camera();publish(ok?0:5,ok?"Camera centered":"Enter a playable map first");}
     else if(cmd==CMD_PLAYER){bool ok=restore_camera(true);publish(ok?0:5,ok?"Camera returned to player":"Enter a playable map first");}
@@ -115,6 +121,7 @@ static void on_command(void) {
     else if(cmd==14){int result=(!isfinite(arg)||floor(arg)!=arg||arg<0||arg>9)?4:request_walk((int)arg);publish(result,result?"Native walk unavailable":"Native map journey requested");}
     else if(cmd==17){int result=craft_selected_fodder();publish(result,result?"饲料制作已停止：请确认材料、安全状态和背包空间":"已调用原版饲料制作；请核对背包产物");}
     else if(cmd==16){if(arg!=0&&arg!=1)publish(4,"Invalid walk keys state");else{set_walk_keys(arg==1);publish(0,"Walk keys intent synchronized");}}
+    else if(cmd==18){if(!isfinite(arg)||floor(arg)!=arg||arg<0||arg>3)publish(4,"Invalid automation flags");else{automation_flags=(unsigned)arg;memcpy(automation_selection,shared->fodder_selection,sizeof(automation_selection));automation_selection[2047]=0;publish(0,"Automation preferences synchronized");}}
     else if(cmd==11){if(arg!=0&&arg!=1)publish(4,"Invalid water mode");else{int result=drink_water(arg==1);publish(result,result?"Water action unavailable or not confirmed":"Water consumed by native action");}}
     else if(cmd==12){if(arg!=0&&arg!=1&&arg!=2&&arg!=17&&arg!=18)publish(4,"Invalid torch mode");else{int mode=(int)arg;int result=toggle_torch(mode&3,(mode&16)!=0);publish(result,result?"Torch action unavailable or not confirmed":"Torch native action confirmed");}}
     else publish(2,"Capability not initialized");
@@ -139,6 +146,7 @@ static void CALLBACK rebind_tick(HWND ignored,UINT msg,UINT_PTR timer,DWORD time
     if(game_window&&bind_window(game_window)){KillTimer(NULL,timer);rebind_timer=0;}
 }
 static LRESULT CALLBACK bridge_proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
+    if(msg==WM_KEYUP)release_walk_key((unsigned)wp);
     if(msg==WM_KEYDOWN&&shared->walk_keys_enabled&&walk_key_direction((unsigned)wp)&&!in_callback){
         in_callback=true;void* saved_self=*(void**)(game+0x990b738);
         DWORD pid=0;GetWindowThreadProcessId(GetForegroundWindow(),&pid);
@@ -210,7 +218,7 @@ __declspec(dllexport) DWORD WINAPI BridgeStart(void* ignored) {
     // Startup can expose a window before the frame manager is initialized.
     // Do not publish a mapping until a valid baseline exists; allow a later retry.
     baseline=get_speed();if(!isfinite(baseline)||baseline<1 || baseline>240)return start_failed(15);
-    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v11.%lu",GetCurrentProcessId());
+    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v14.%lu",GetCurrentProcessId());
     mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,NULL,PAGE_READWRITE,0,65536,name);
     if(!mapping)return start_failed(12);
     if(GetLastError()==ERROR_ALREADY_EXISTS)return start_failed(13);

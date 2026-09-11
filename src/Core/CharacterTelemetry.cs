@@ -7,6 +7,9 @@ public sealed record StatSource(string Key,double? Delta,double? SourceId,string
 public sealed record FodderMaterial(string Key,string Name,double Value);
 public sealed class CharacterTelemetry
 {
+    public int AutomationFlags {get;set;}
+    public int ForagePhase {get;set;}
+    public int ForageCount {get;set;}
     public long At {get;set;}
     public double? Player {get;set;}
     public StatReading[] Stats {get;set;}=[];

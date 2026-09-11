@@ -188,7 +188,7 @@ int main(void){
     reset();set_walk_keys(true);begin(6);set_walk_keys(false);
     check(shared->walk_state==WALK_ACTIVE&&stop_calls==0,"disabling keyboard mode does not cancel independent grid route");
     reset();set_walk_keys(true);begin(11);shared->scene_generation++;reconcile_walk(0);
-    handle_walk_key(VK_UP,true,false,true,true);test_now+=119;reconcile_walk(0);
+    handle_walk_key(VK_UP,true,false,true,true);test_now+=149;reconcile_walk(0);
     check(shared->walk_keys_enabled&&shared->walk_state==WALK_SCENE&&move_calls==1&&stop_calls==0,"map change retains mode but held key never restarts in new scene");
     reset();set_walk_keys(true);begin(11);idle=false;enemy=true;reconcile_walk(0);
     check(shared->walk_state==WALK_THREAT&&stop_calls==1&&move_calls==1,"relative journey stops when a new enemy appears");
@@ -211,7 +211,7 @@ int main(void){
     }
     reset();set_walk_keys(true);begin(11);shared->player_x=px=sent_x;shared->player_y=py=sent_y;reconcile_walk(0);
     check(shared->walk_state==WALK_ACTIVE&&walk_dispatch_pending&&move_calls==1,"relative arrival queues automatic exit");
-    handle_walk_key(VK_UP,true,false,true,true);test_now+=119;reconcile_walk(0);
+    handle_walk_key(VK_UP,true,false,true,true);test_now+=149;reconcile_walk(0);
     check(exit_calls==0&&walk_dispatch_pending,"exit waits for overlay polling to clear target");
     test_now+=1;reconcile_walk(0);
     check(move_calls==1&&exit_calls==1&&shared->walk_state==WALK_ACTIVE,"held key does not block automatic exit");
@@ -248,11 +248,24 @@ int main(void){
     reset();center_min_distance=5*676;begin(5);
     check(move_calls==0&&center_queries==8&&walk_dispatch_pending,"large blocked center is scanned in bounded batches without moving");
     for(int i=0;i<40&&walk_dispatch_pending;i++){test_now+=100;reconcile_walk(0);}
-    check(move_calls==1&&((sent_x-1183)*(sent_x-1183)+(sent_y-1183)*(sent_y-1183))==5*676,"center fallback is sorted by distance, not scan order");
+    check(move_calls==1&&((sent_x-1183)*(sent_x-1183)+(sent_y-1183)*(sent_y-1183))==5*676&&sent_x==1209&&sent_y==1131,"center fallback follows clockwise rings");
     reset();center_min_distance=INFINITY;begin(5);enemy=true;test_now+=100;reconcile_walk(0);
     check(move_calls==0&&center_queries==8&&shared->walk_state==WALK_THREAT,"enemy during center search cancels without a path or attack");
     reset();center_min_distance=INFINITY;begin(5);
-    for(int i=0;i<40&&walk_dispatch_pending;i++){test_now+=100;reconcile_walk(0);}
-    check(move_calls==0&&center_queries==289&&shared->walk_state==WALK_BLOCKED,"fully blocked center neighborhood stops after bounded search");
+    for(int i=0;i<310&&walk_dispatch_pending;i++){test_now+=100;reconcile_walk(0);}
+    check(move_calls==0&&shared->walk_state==WALK_TIMEOUT,"fully blocked center scan times out without native movement");
+    for(int first=0;first<4;first++)for(int second=0;second<4;second++){
+        if((first<2)==(second<2))continue;
+        reset();set_walk_keys(true);shared->player_x=px=507;shared->player_y=py=767;
+        handle_walk_key(keys[first],false,false,true,true);test_now+=30;
+        handle_walk_key(keys[second],false,false,true,true);
+        int vertical=first<2?first:second,horizontal=first>=2?first:second;
+        check(shared->walk_direction==16+vertical*2+(horizontal-2),"orthogonal held keys select all four diagonals in either order");
+        test_now+=200;reconcile_walk(0);
+        check(move_calls==1&&fabs(sent_x-507)==fabs(sent_y-767),"diagonal preserves equal displacement from current cell");
+        release_walk_key(keys[first]);release_walk_key(keys[second]);
+        check(walk_held_keys==0,"key up clears chord state");
+    }
+    for(int i=1;i<9;i++){WalkCandidate c=center_candidate(i);check(abs(c.dx)<=1&&abs(c.dy)<=1&&(c.dx||c.dy),"first clockwise ring contains adjacent cells only");}
     printf("%d native interaction checks passed. No game accessed.\n",passed);return 0;
 }

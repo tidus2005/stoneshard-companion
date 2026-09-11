@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 #define BRIDGE_MAGIC 0x53484331u
-#define BRIDGE_VERSION 11u
+#define BRIDGE_VERSION 14u
 #define BRIDGE_MESSAGE (WM_APP + 0x437)
 #define CMD_REFRESH 1
 #define CMD_SPEED 2

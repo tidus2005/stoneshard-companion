@@ -4,13 +4,15 @@
 
 **把走图、变速、补给和存档备份，放进一块可以自由摆放的游戏辅助面板。**
 
-0.3.14 · Windows x64 · 非官方开源工具 · 适配 Steam 原版 **Stoneshard 0.9.4.25 / Build 24780451**
+0.3.17 · Windows x64 · 非官方开源工具 · 适配 Steam 原版 **Stoneshard 0.9.4.25 / Build 24780451**
 
-**[下载 Windows 免安装版 ZIP](https://github.com/tidus2005/stoneshard-companion/releases/download/v0.3.14/StoneshardCompanion-0.3.14-win-x64.zip)** · [全部版本](https://github.com/tidus2005/stoneshard-companion/releases) · [完整使用说明](docs/使用说明.md)
+**[下载 Windows 免安装版 ZIP](https://github.com/tidus2005/stoneshard-companion/releases/download/v0.3.17/StoneshardCompanion-0.3.17-win-x64.zip)** · [全部版本](https://github.com/tidus2005/stoneshard-companion/releases) · [完整使用说明](docs/使用说明.md)
 
 ![晶石助手宽面板：左侧九宫格导航，上方角色状态，右侧补给、物品常显、变速和备份按钮](docs/images/hud-wide-v038.png)
 
 > 图片来自 **0.3.8 实际 WPF 界面组件的离屏预览**，角色数值、备份条目和路径为演示数据；不是游戏运行截图。自动功能在图中开启以展示效果，首次启动默认关闭。[图片生成方式](tools/DocImages/README.md)
+
+**0.3.17 更新**：修复沿途采集漏发现与相邻格误判，保留烹饪食材，完善原生饲料堆叠；读档确认框默认勾选。[本版说明与实测范围](docs/releases/v0.3.17.md)。[家庭电脑开发交接](docs/开发交接-2026-09-11.md)。
 
 **0.3.14 更新**：修复向上出口点击和饲料制作闪退，缩短切图等待；新增紧凑可调属性浮窗、补给续航、装备耐久预警、存档截图与总控设置。[发行说明与实测范围](docs/releases/v0.3.14.md)
 
@@ -18,7 +20,7 @@ An open-source Windows companion for Stoneshard with a movable overlay, speed co
 
 ## 三步开始使用
 
-1. 下载上面的 `StoneshardCompanion-0.3.14-win-x64.zip`，**完整解压**到普通文件夹。
+1. 下载上面的 `StoneshardCompanion-0.3.17-win-x64.zip`，**完整解压**到普通文件夹。
 2. 双击 `Start.cmd` 或 `StoneshardCompanion.exe`。随包包含 .NET，存档功能无需安装 PowerShell。
 3. 打开适配版本的游戏，使用窗口或无边框全屏；把面板拖到技能栏旁的空余位置。
 
@@ -103,7 +105,7 @@ Mac 虚拟机中的“文档”可能位于共享目录，遇到断开或不可�
 
 实际验证了四方向切图、整行寻路、蓝莓制作饲料、喝水与进食后属性变化、续航采样、黄色耐久提醒、外观配置、属性关注、存档截图及完整退出。损坏红色与异常路径使用模拟回归；其他硬件、DPI、所有食物和战斗场景尚未逐项覆盖。完整范围见 [0.3.14 发行说明](docs/releases/v0.3.14.md)。
 
-**升级至 0.3.14 请正常退出游戏，以加载 v11 桥接。** 自动更新会等待游戏关闭后安装并重启助手。工具包不含游戏、个人存档或本机设置。
+**升级至 0.3.17 请正常退出游戏，以加载 v14 桥接。** 自动更新会等待游戏关闭后安装并重启助手。工具包不含游戏、个人存档或本机设置。
 
 <details>
 <summary>使用说明、设计与历次验证报告</summary>

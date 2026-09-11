@@ -35,16 +35,17 @@ static bool native_pump_exit_click(void){
     if(exit_mouse_phase==1){exit_mouse_phase=2;exit_mouse_due=GetTickCount64()+70;}else exit_mouse_phase=0;
     return true;
 }
-static bool native_click_exit(RV player,int direction){
+static bool native_click_world(double world_x,double world_y){
     if(GetForegroundWindow()!=game_window||walk_modifiers_down()||
        ((GetAsyncKeyState(VK_LBUTTON)|GetAsyncKeyState(VK_RBUTTON)|GetAsyncKeyState(VK_MBUTTON))&0x8000))return false;
     RECT rc;if(!GetClientRect(game_window,&rc))return false;
     RV camera=get_global("cameraMain");if(!isfinite(number(camera))||number(camera)<0){release_value(&camera);return false;}
     double cx=exit_camera_value(0x527a0b0,camera),cy=exit_camera_value(0x527a120,camera);
     double cw=exit_camera_value(0x527a040,camera),ch=exit_camera_value(0x5279a90,camera);release_value(&camera);
-    double x,y;
-    if(!exit_click_point(direction,member_number(player,"x"),member_number(player,"y"),
-        cx,cy,cw,ch,rc.right,rc.bottom,&x,&y))return false;
+    if(!isfinite(cw)||!isfinite(ch)||cw<=0||ch<=0||world_x<cx||world_y<cy||world_x>=cx+cw||world_y>=cy+ch)return false;
+    double scale=fmin(rc.right/cw,rc.bottom/ch);
+    double x=(rc.right-cw*scale)/2+(world_x-cx)*scale,y=(rc.bottom-ch*scale)/2+(world_y-cy)*scale;
+    if(x<1||y<1||x>=rc.right-1||y>=rc.bottom-1)return false;
     POINT point={(LONG)lround(x),(LONG)lround(y)};
     if(!ClientToScreen(game_window,&point)||WindowFromPoint(point)!=game_window)return false;
     int vx=GetSystemMetrics(SM_XVIRTUALSCREEN),vy=GetSystemMetrics(SM_YVIRTUALSCREEN),vw=GetSystemMetrics(SM_CXVIRTUALSCREEN),vh=GetSystemMetrics(SM_CYVIRTUALSCREEN);
@@ -55,5 +56,10 @@ static bool native_click_exit(RV player,int direction){
     if(SendInput(1,&move,sizeof(move))!=1)return false;
     exit_mouse_point=point;exit_mouse_phase=1;exit_mouse_due=GetTickCount64()+70;
     return true;
+}
+static bool native_click_exit(RV player,int direction){
+    int d=direction>=11&&direction<=14?direction-10:direction;
+    if(d<1||d>4)return false;
+    return native_click_world(member_number(player,"x")+(d==3?-26:d==4?26:0),member_number(player,"y")+(d==1?-36:d==2?26:0));
 }
 #endif

@@ -41,6 +41,8 @@ public partial class MainWindow : Window
     private bool busy,closing,closed,folded,polling,keysRegistered,resetPending,walkStarting;
     private long nextDiscovery,nextConnect;
     private int connectFailures;
+    private string? automationSynced;
+    private long automationSyncedAt;
     private string? unsupportedSession;
     private ulong lastScene,lastWindow;
     private readonly Dictionary<int,(uint Key,Action Action)> shortcuts=[];
@@ -148,6 +150,14 @@ public partial class MainWindow : Window
             if(closing)return;
             if(state.Ready&&state.Fresh&&!busy&&state.WalkKeysEnabled!=Preferences.AutoWalkKeys){await SendAsync(EngineCommand.WalkKeysSet,Preferences.AutoWalkKeys?1:0,false);if(closing)return;state=bridge.ReadState();}
             if(closing)return;
+            if(state.Ready&&state.Fresh&&!busy){
+                int flags=(Preferences.AutoVisor?1:0)|(Preferences.AutoForage?2:0);
+                string payload=FodderPolicy.Selection(Preferences.FodderMaterials);
+                string sync=$"{session?.Key}:{flags}:{payload}";
+                if(sync!=automationSynced||(state.Telemetry.AutomationFlags!=flags&&Environment.TickCount64-automationSyncedAt>2500)){
+                    busy=true;try{var result=await bridge.SendAsync(EngineCommand.AutomationSet,flags,payload:payload);if(result.Error==0){automationSynced=sync;automationSyncedAt=Environment.TickCount64;}}finally{busy=false;}
+                }
+            }
             if(!busy){
                 var observation=new SupplyObservation(Environment.TickCount64,state.SceneGeneration,usable,front,state.WalkState!=1&&(state.SupplyFlags&2)!=0&&!Saves.Busy&&!hud.IsInteracting,(state.SupplyFlags&1)!=0,(state.VitalValid&2)!=0?state.Thirst:double.NaN,state.WaterUses,state.TorchState,state.TorchCount,true);
                 var action=supply.Evaluate(observation,Preferences.AutoDrink,Preferences.AutoTorch,Preferences.DrinkThreshold);
@@ -166,7 +176,7 @@ public partial class MainWindow : Window
         CharacterData=state is {Ready:true,Fresh:true,SceneReady:true}?state.Telemetry:new();
         stats.Refresh(CharacterData);
         // Yield both overlays while the bridge prepares/sends its real click.
-        if(state is {Ready:true,Fresh:true,WalkState:1,WalkPhase:1}){HideHud();return;}
+        if(state is {Ready:true,Fresh:true,WalkState:1,WalkPhase:1 or 2}){HideHud();return;}
         if(!Preferences.ShowStats||!CharacterData.Fresh(Environment.TickCount64)||folded||!GameOrAssistantForeground()||(state!.UiFlags&~8u)!=0)stats.Hide();
         else if(session is not null&&Native.GetClientRect(session.Window,out var sr)&&sr.Right>0){var sp=new Native.Point();if(Native.ClientToScreen(session.Window,ref sp)){sr.Left+=sp.X;sr.Right+=sp.X;sr.Top+=sp.Y;sr.Bottom+=sp.Y;if(!stats.IsVisible)stats.Show();stats.Place(sr);}}
         if(!HudPolicy.Show(folded,state is {Ready:true,Fresh:true,SceneReady:true},state?.UiFlags??0)){HideHud();return;}
@@ -190,10 +200,11 @@ public partial class MainWindow : Window
     }
     public void Reset()
     {
-        intent.Stop();Preferences.LastSpeed=1;Preferences.AutoCenter=false;Preferences.ShowLabels=false;Preferences.AutoDrink=false;Preferences.AutoTorch=false;Preferences.AutoWalkKeys=false;supply.Reset();SavePreferences();resetPending=true;
+        intent.Stop();Preferences.LastSpeed=1;Preferences.AutoCenter=false;Preferences.ShowLabels=false;Preferences.AutoDrink=false;Preferences.AutoTorch=false;Preferences.AutoWalkKeys=false;Preferences.AutoVisor=false;Preferences.AutoForage=false;supply.Reset();SavePreferences();resetPending=true;
         UserPreferences.Log("explicit-reset");SetStatus("已选择正常速度，正在恢复");
     }
     public void ToggleLabels(){Preferences.ShowLabels=!Preferences.ShowLabels;SavePreferences();ReturnToGame();}
+    public void ToggleAutoVisor(){Preferences.AutoVisor=!Preferences.AutoVisor;SavePreferences();ReturnToGame();}
     public void ToggleWalkKeys(){Preferences.AutoWalkKeys=!Preferences.AutoWalkKeys;SavePreferences();ReturnToGame();}
     private bool ReturnToGame()
     {
@@ -224,6 +235,7 @@ public partial class MainWindow : Window
         try{
             if(bridge is null||busy||!ReturnToGame())return;
             var state=bridge.ReadState();if(!state.Ready||!state.Fresh||!state.SceneReady||state.UiFlags!=0)return;
+            if(command==EngineCommand.Visor){Preferences.AutoVisor=false;SavePreferences();}
             if(command==EngineCommand.Torch){Preferences.AutoTorch=false;SavePreferences();}
             supply.ManualAction(Environment.TickCount64);await SendAsync(command,0,true);
         }catch(Exception e){if(!closing)ShowError(e.Message);}

@@ -35,12 +35,7 @@ static bool set_member(RV obj,const char* name,RV value){
     if(!has_member(obj,name))return false;
     RV args[3]={obj,string_value(name),value};call_builtin(0x51ee370,3,args);return true;
 }
-static RV call_script(uintptr_t address,RV self,int count,RV* values){
-    RV out={.kind=5};RV* args[4]={0};
-    if((self.kind&0xffffff)!=6||!self.ptr||count>4)return out;
-    for(int i=0;i<count;i++)args[i]=values+i;
-    ((GameScript)(game+address))(self.ptr,self.ptr,&out,count,args);return out;
-}
+#include "script_call.h"
 static RV call_instance_builtin(uintptr_t address,RV self,int count,RV* values){
     RV out={.kind=5};
     if((self.kind&0xffffff)==6&&self.ptr)((Builtin)(game+address))(&out,self.ptr,self.ptr,count,values);
@@ -55,8 +50,8 @@ static bool auto_center;
 static double observed_camera_id=-1;
 static uint64_t scene_ready_since;
 static uint64_t playable_since;
-static RV visor_helmet(void){RV slot=find_instance("o_inv_head");if(!valid_object(slot))return (RV){.kind=5};RV child=get_member(slot,"children");RV result=instance_from_id(child);release_value(&child);return result;}
-static int visor_state(void){RV helmet=visor_helmet();if(!valid_object(helmet)||!has_member(helmet,"visorSwitch"))return -1;double n=member_number(helmet,"isOpen");return n==1?1:n==0?0:-1;}
+static RV visor_helmet(void){RV slot=find_instance("o_inv_head");RV child=get_member(slot,"children"),result=instance_from_id(child);release_value(&child);release_value(&slot);return result;}
+static int visor_state(void){RV helmet=visor_helmet();double n=valid_object(helmet)&&has_member(helmet,"visorSwitch")?member_number(helmet,"isOpen"):NAN;release_value(&helmet);return n==1?1:n==0?0:-1;}
 static bool scene_objects(RV* player,RV* camera){*player=find_instance("o_player");*camera=find_instance("oCamera");return valid_object(*player)&&valid_object(*camera)&&has_member(*camera,"freeCamera");}
 static void update_view(RV camera){
     double w=global_number("cameraWidth"),h=global_number("cameraHeight");
@@ -87,14 +82,15 @@ static bool center_camera(void){
     update_view(camera);return true;
 }
 static int toggle_visor(void){
-    RV player,camera;if(!scene_objects(&player,&camera))return 5;
+    RV player,camera;bool ready=scene_objects(&player,&camera);release_value(&player);release_value(&camera);if(!ready)return 5;
     RV button=find_instance("o_visor_toggle"),helmet=visor_helmet();
-    if(!valid_object(button)||!valid_object(helmet)||!has_member(helmet,"visorSwitch"))return 6;
-    double previous=member_number(helmet,"isOpen");if(previous!=0&&previous!=1)return 6;
+    double previous=member_number(helmet,"isOpen");int result=6;
     // Same guarded user event as the native visor button. No item attributes are fabricated.
-    ((ObjectEvent)(game+0x32d4520))(button.ptr,button.ptr);
-    bool changed=member_number(helmet,"isOpen")!=previous;
-    return changed?0:7;
+    if(valid_object(button)&&valid_object(helmet)&&has_member(helmet,"visorSwitch")&&(previous==0||previous==1)){
+        ((ObjectEvent)(game+0x32d4520))(button.ptr,button.ptr);
+        result=member_number(helmet,"isOpen")!=previous?0:7;
+    }
+    release_value(&button);release_value(&helmet);return result;
 }
 static bool any_visible_gui(const char* parent){
     RV name=string_value(parent),asset=call_builtin(0x5336680,1,&name);

@@ -54,7 +54,7 @@ public sealed class SaveWindow : Window
         Add(restoreRow,"还原选中的备份",()=>{
             if(history.SelectedItem is not SaveArchive archive){status.Text="先在列表中选择一个备份。";return;}
             pending=archive;confirmText.Text=$"将还原：{archive.Name}\n还原前会自动备份当前状态，原备份保持不变。文件还原成功不等于游戏已成功读档；运行中热还原曾出现加载失败，本版尚未实机验证。";
-            inMenu.IsChecked=false;confirmation.Visibility=Visibility.Visible;confirm.IsEnabled=false;
+            inMenu.IsChecked=true;confirmation.Visibility=Visibility.Visible;confirm.IsEnabled=!owner.Saves.Busy;
         });
         confirmation.Children.Add(confirmText);confirmation.Children.Add(inMenu);var confirmButtons=new WrapPanel();confirmation.Children.Add(confirmButtons);
         confirm.Content="确认还原此备份";confirm.Margin=new Thickness(0,0,8,5);confirmButtons.Children.Add(confirm);operations.Add(confirm);

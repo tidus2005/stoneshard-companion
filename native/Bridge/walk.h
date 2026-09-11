@@ -6,22 +6,27 @@ enum { WALK_NONE=0,WALK_ACTIVE=1,WALK_ARRIVED=2,WALK_MANUAL=3,WALK_THREAT=4,
 static uint64_t walk_scene,walk_window,walk_started,walk_progress;
 static double walk_player_id,walk_last_x,walk_last_y;
 static bool walk_dispatch_pending;
-static bool walk_exit_activated;
+static bool walk_exit_activated,walk_center_resolved;
 typedef struct WalkCandidate {int dx,dy,distance;double from_player;} WalkCandidate;
-static WalkCandidate walk_centers[289];
 static int walk_center_count,walk_center_cursor;
-static void prepare_center(double x,double y){
-    walk_center_count=walk_center_cursor=0;
-    for(int dx=-8;dx<=8;dx++)for(int dy=-8;dy<=8;dy++){
-        double tx=x+dx*26,ty=y+dy*26;
-        if(tx<39||ty<39||tx>floor(shared->map_w/26)*26-39||ty>floor(shared->map_h/26)*26-39)continue;
-        WalkCandidate c={dx,dy,dx*dx+dy*dy,(tx-shared->player_x)*(tx-shared->player_x)+(ty-shared->player_y)*(ty-shared->player_y)};
-        int at=walk_center_count++;
-        while(at>0&&(walk_centers[at-1].distance>c.distance||(walk_centers[at-1].distance==c.distance&&walk_centers[at-1].from_player>c.from_player))){walk_centers[at]=walk_centers[at-1];at--;}
-        walk_centers[at]=c;
-    }
+static int walk_diagonal_exit;
+static unsigned walk_held_keys;
+// Lazy clockwise square rings: north, east, south, west, then the next ring.
+// No large array or synchronous whole-map pathfinding in the game thread.
+static WalkCandidate center_candidate(int index){
+    if(!index)return (WalkCandidate){0};
+    int r=(int)((sqrt((double)index)+1)/2),n=index-(2*r-1)*(2*r-1);
+    n=(n+r)%(8*r);
+    int side=n/(2*r),p=n%(2*r),dx=0,dy=0;
+    if(side==0){dx=-r+p;dy=-r;}else if(side==1){dx=r;dy=-r+p;}
+    else if(side==2){dx=r-p;dy=r;}else{dx=-r;dy=r-p;}
+    return (WalkCandidate){dx,dy,dx*dx+dy*dy,0};
 }
-static bool walk_crosses_map(int direction){return (direction>=1&&direction<=4)||(direction>=11&&direction<=14);}
+static void prepare_center(double x,double y){
+    int radius=(int)ceil(fmax(shared->map_w,shared->map_h)/52);
+    walk_center_count=(2*radius+1)*(2*radius+1);walk_center_cursor=0;
+}
+static bool walk_crosses_map(int direction){return (direction>=1&&direction<=4)||(direction>=11&&direction<=14)||(direction>=16&&direction<=19);}
 static bool walk_modifiers_down(void){
 #ifdef COMPANION_NATIVE_TEST
     return test_modifiers_down;
@@ -44,6 +49,15 @@ static bool walk_target(int direction,double width,double height,bool outer,doub
 // Keyboard routes preserve the character's column/row, independent of camera.
 // Arrival at the inner boundary automatically continues through the exit.
 static bool walk_destination(int direction,double* x,double* y){
+    if(direction>=16&&direction<=19){
+        int sx=direction==16||direction==18?-1:1,sy=direction<=17?-1:1;
+        int col=(int)floor(shared->player_x/26),row=(int)floor(shared->player_y/26);
+        int cols=(int)floor(shared->map_w/26),rows=(int)floor(shared->map_h/26);
+        if(cols<4||rows<4||col<1||row<1||col>cols-2||row>rows-2)return false;
+        int nx=sx<0?col-1:cols-2-col,ny=sy<0?row-1:rows-2-row,steps=nx<ny?nx:ny;
+        *x=(col+sx*steps)*26+13;*y=(row+sy*steps)*26+13;
+        walk_diagonal_exit=ny<=nx?(sy<0?1:2):(sx<0?3:4);return true;
+    }
     bool relative=direction>=11&&direction<=14;
     if(!walk_target(relative?direction-10:direction,shared->map_w,shared->map_h,false,x,y))return false;
     if(relative){
@@ -58,7 +72,7 @@ static bool walk_destination(int direction,double* x,double* y){
 static bool walk_threat(RV player){
     return member_number(player,"is_see_enemy")!=0||member_number(player,"is_damage_taken")!=0||member_number(player,"is_take_injury")!=0;
 }
-static int walk_cardinal(int direction){return direction>=11&&direction<=14?direction-10:direction>=1&&direction<=4?direction:0;}
+static int walk_cardinal(int direction){return direction>=16&&direction<=19?walk_diagonal_exit:direction>=11&&direction<=14?direction-10:direction>=1&&direction<=4?direction:0;}
 static bool walk_border_cell(int direction,double px,double py){
     int d=walk_cardinal(direction);double width=shared->map_w,height=shared->map_h;
     if(!d||!isfinite(px)||!isfinite(py)||!isfinite(width)||!isfinite(height)||width<104||height<104||px<0||py<0||px>=width||py>=height)return false;
@@ -78,7 +92,7 @@ static bool walk_exit_target(int direction,double* x,double* y){
     if(!d||!walk_target(d,shared->map_w,shared->map_h,true,x,y)||!isfinite(px)||!isfinite(py))return false;
     // Only consider a nearby real exit once the character reached the inner
     // boundary (or the actual transition cell lies inward of that assumption).
-    if(native_exit_target(direction,px,py,x,y)&&fabs(*x-px)<28&&fabs(*y-py)<28)return true;
+    if(native_exit_target(d,px,py,x,y)&&fabs(*x-px)<28&&fabs(*y-py)<28)return true;
     int cols=(int)floor(shared->map_w/26),rows=(int)floor(shared->map_h/26);
     if(px<0||py<0||px>=cols*26||py>=rows*26)return false;
     int col=(int)floor(px/26),row=(int)floor(py/26);
@@ -101,17 +115,18 @@ static void finish_walk(int reason,bool stop_native){
 }
 static int start_walk(int direction){
     if(direction==0){finish_walk(WALK_MANUAL,true);return 0;}
-    double x,y;bool exit=walk_exit_target(direction,&x,&y);
+    double x,y;if(direction>=16&&direction<=19&&!walk_destination(direction,&x,&y))return 4;
+    bool exit=walk_exit_target(direction,&x,&y);
     if(!exit&&!walk_destination(direction,&x,&y))return 4;
     if(shared->walk_state==WALK_ACTIVE)return 7;
     RV player=find_instance("o_player");
     if(!valid_object(player)||!walk_safe(player)){release_value(&player);return 7;}
     shared->walk_direction=direction;shared->walk_x=x;shared->walk_y=y;shared->walk_phase=exit?1:0;
-    walk_exit_activated=false;
+    walk_exit_activated=false;walk_center_resolved=false;
     if(direction==5)prepare_center(x,y);
     if(!exit&&fabs(shared->player_x-x)<2&&fabs(shared->player_y-y)<2){
         if(!walk_crosses_map(direction)){shared->walk_state=WALK_ARRIVED;release_value(&player);return 0;}
-        walk_target(direction>=11?direction-10:direction,shared->map_w,shared->map_h,true,&shared->walk_x,&shared->walk_y);shared->walk_phase=1;
+        walk_target(walk_cardinal(direction),shared->map_w,shared->map_h,true,&shared->walk_x,&shared->walk_y);shared->walk_phase=1;
     }
     walk_player_id=member_number(player,"id");walk_scene=shared->scene_generation;walk_window=shared->window_generation;
     walk_started=walk_progress=GetTickCount64();walk_last_x=shared->player_x;walk_last_y=shared->player_y;
@@ -149,18 +164,19 @@ static void reconcile_walk(uint32_t reasons){
     if(!native_pump_exit_click()){release_value(&player);finish_walk(WALK_MANUAL,false);return;}
     if(walk_dispatch_pending){
         uint64_t elapsed=GetTickCount64()-walk_started;
-        if(elapsed>(shared->walk_direction==5?8000:2000)){release_value(&player);finish_walk(WALK_TIMEOUT,false);return;}
+        if(elapsed>(shared->walk_direction==5?30000:2000)){release_value(&player);finish_walk(WALK_TIMEOUT,false);return;}
         // The overlay polls every 75 ms; allow it to hide panels over the exit.
         // Obstruction is still checked at the actual click, never clicked through.
-        if(elapsed<(shared->walk_phase==1?120:75)||walk_modifiers_down()){release_value(&player);return;}
+        if(elapsed<(shared->walk_direction>=11?150:shared->walk_phase==1?120:75)||walk_modifiers_down()){release_value(&player);return;}
         if(!walk_safe(player)){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}
-        if(shared->walk_direction==5){
+        if(shared->walk_direction==5&&!walk_center_resolved){
             double cx,cy;walk_target(5,shared->map_w,shared->map_h,false,&cx,&cy);
             bool found=false;uint64_t scan_start=GetTickCount64();
             for(int budget=0;budget<8&&walk_center_cursor<walk_center_count;budget++){
-                WalkCandidate c=walk_centers[walk_center_cursor++];double tx=cx+c.dx*26,ty=cy+c.dy*26;
+                WalkCandidate c=center_candidate(walk_center_cursor++);double tx=cx+c.dx*26,ty=cy+c.dy*26;
+                if(tx<39||ty<39||tx>floor(shared->map_w/26)*26-39||ty>floor(shared->map_h/26)*26-39)continue;
                 bool here=fabs(member_number(player,"x")-tx)<2&&fabs(member_number(player,"y")-ty)<2;
-                if(here||native_center_reachable(player,tx,ty)){shared->walk_x=tx;shared->walk_y=ty;found=true;break;}
+                if(here||native_center_reachable(player,tx,ty)){shared->walk_x=tx;shared->walk_y=ty;walk_center_resolved=true;found=true;break;}
                 if(GetTickCount64()-scan_start>=5)break;
             }
             if(!found){release_value(&player);if(walk_center_cursor==walk_center_count)finish_walk(WALK_BLOCKED,false);return;}
@@ -172,7 +188,7 @@ static void reconcile_walk(uint32_t reasons){
             // At the reached border, click the adjacent outward cell directly.
             // Do not wait for a synthetic route to an assumed outer row first.
             shared->walk_x=px;shared->walk_y=py;
-            if(!native_click_exit(player,shared->walk_direction)){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}
+            if(!native_click_exit(player,walk_cardinal(shared->walk_direction))){release_value(&player);finish_walk(WALK_BLOCKED,false);return;}
             walk_exit_activated=true;release_value(&player);walk_dispatch_pending=false;
             walk_progress=walk_started=GetTickCount64();return;
         }
@@ -216,14 +232,21 @@ static int walk_key_direction(unsigned key){
     switch(key){case VK_UP:return 11;case VK_DOWN:return 12;case VK_LEFT:return 13;case VK_RIGHT:return 14;default:return 0;}
 }
 static void set_walk_keys(bool enabled){
+    walk_held_keys=0;
     shared->walk_keys_enabled=enabled?1:0;
-    if(!enabled&&shared->walk_direction>=11&&shared->walk_direction<=14)finish_walk(WALK_MANUAL,true);
+    if(!enabled&&shared->walk_direction>=11)finish_walk(WALK_MANUAL,true);
 }
+static void release_walk_key(unsigned key){int d=walk_key_direction(key);if(d)walk_held_keys&=~(1u<<(d-11));}
 // Called only for the game's WM_KEYDOWN. No global unmodified hotkeys.
 static bool handle_walk_key(unsigned key,bool repeat,bool modifiers,bool foreground,bool lease_live){
     int direction=walk_key_direction(key);
     if(!direction||!shared->walk_keys_enabled||modifiers||!foreground||!lease_live||!shared->ready||!shared->scene_ready||(shared->ui_flags&~8u))return false;
     if(repeat)return true; // A held key never restarts an interrupted journey.
+    unsigned previous=walk_held_keys;walk_held_keys|=1u<<(direction-11);
+    if(previous&&shared->walk_state==WALK_ACTIVE&&walk_dispatch_pending&&GetTickCount64()-walk_started<=150){
+        int diagonal=walk_held_keys==5?16:walk_held_keys==9?17:walk_held_keys==6?18:walk_held_keys==10?19:0;
+        if(diagonal){shared->walk_state=WALK_MANUAL;start_walk(diagonal);return true;}
+    }
     int result=request_walk(direction);
     if(result){
         RV player=find_instance("o_player");

@@ -31,6 +31,9 @@ public sealed class UserPreferences
     public bool ShowLabels { get; set; }
     public bool AutoDrink {get;set;}
     public bool AutoTorch {get;set;}
+    public bool AutoVisor {get;set;}
+    public bool AutoForage {get;set;}
+    public Dictionary<string,string> KnownFodderMaterials {get;set;}=[];
     public bool AutoWalkKeys {get;set;}
     public string? BackupFolder {get;set;}
     public double DrinkThreshold {get;set;}=25;
@@ -51,6 +54,7 @@ public sealed class UserPreferences
             p.StatsWidth=Clamp(p.StatsWidth,250,600,290);p.StatsHeight=Clamp(p.StatsHeight,200,900,380);
             p.StatsFontSize=Clamp(p.StatsFontSize,10,20,12);p.DurabilityWarning=Clamp(p.DurabilityWarning,5,75,25);
             p.FavoriteStats=(p.FavoriteStats??[]).Where(k=>StatsCatalog.All.Any(d=>d.Key==k)).ToHashSet(StringComparer.Ordinal);
+            p.KnownFodderMaterials=(p.KnownFodderMaterials??[]).Where(k=>FodderPolicy.ValidKey(k.Key)&&!string.IsNullOrWhiteSpace(k.Value)&&k.Value.Length<=256).Take(256).ToDictionary(k=>k.Key,k=>k.Value);
             p.FodderMaterials=(p.FodderMaterials??[]).Where(FodderPolicy.ValidKey).Take(32).ToHashSet(StringComparer.Ordinal);
             if(!double.IsFinite(p.StatsX)||!double.IsFinite(p.StatsY))p.StatsPlaced=false;
             p.LastSpeed=Math.Clamp(p.LastSpeed,1,4);p.Scale=Math.Clamp(p.Scale,.75,1.35);p.BottomOffset=Math.Clamp(p.BottomOffset,-60,180);

@@ -33,10 +33,11 @@ static bool native_center_reachable(RV player,double x,double y){
     RV collision=call_instance_builtin(0x51f14f0,player,5,collision_args);
     double occupied=number(collision);release_value(&collision);
     if(!isfinite(occupied)||occupied!=-4)return false; // noone, excluding self
-    // The game's read-only path query uses newgrid.temp_path, never player.path.
-    // Its default fifth argument snaps pixel coordinates to 26-pixel cell centers.
-    RV args[4]={numeric(px),numeric(py),numeric(x),numeric(y)};
-    RV result=call_script(0x17206a0,player,4,args);bool ok=number(result)==1;release_value(&result);return ok;
+    // The native query uses newgrid.temp_path, never player.path.
+    // Its default fifth argument multiplies GRID coordinates by 26, then adds 13.
+    RV args[4]={numeric(floor(px/26)),numeric(floor(py/26)),numeric(floor(x/26)),numeric(floor(y/26))};
+    RV result=call_script(0x17206a0,player,4,args);bool ok=number(result)==1;
+    release_value(&result);return ok;
 }
 static void native_activate_exit(RV player){
     // The same routine called by o_player.Other_17 on native arrival. It checks
