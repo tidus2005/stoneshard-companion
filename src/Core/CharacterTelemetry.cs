@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace StoneshardCompanion;
 public sealed record StatReading(string Key,double? Value,double? Baseline);
 public sealed record StatSource(string Key,double? Delta,double? SourceId,string Label);
-public sealed record FodderMaterial(string Key,string Name,double Value);
+public sealed record FodderMaterial(string Key,string Name,double Value,double Quantity=1);
 public sealed class CharacterTelemetry
 {
     public int AutomationFlags {get;set;}
@@ -27,12 +27,19 @@ public sealed class CharacterTelemetry
             if(data.Stats is null||data.Sources is null||data.Foods is null||data.Stats.Length>256||data.Sources.Length>256||data.Foods.Length>256)return new();
             if(data.Journey is null||data.Journey.Provisions is null||data.Journey.Equipment is null||data.Journey.Provisions.Length>256||data.Journey.Equipment.Length>64||!Finite(data.Journey.Minutes))return new();
             if(data.Journey.Provisions.Any(p=>p is null||p.Name is null||!double.IsFinite(p.Uses)||p.Uses<0||p.Uses>10000||!Finite(p.Hunger)||!Finite(p.Thirst)||!Finite(p.FreshHours))||data.Journey.Equipment.Any(e=>e is null||e.Name is null||!double.IsFinite(e.Current)||!double.IsFinite(e.Maximum)||e.Maximum<=0))return new();
-            if(data.Stats.Any(s=>s is null||s.Key is null||s.Key.Length>120||!Finite(s.Value)||!Finite(s.Baseline))||data.Sources.Any(s=>s is null||s.Key is null||s.Label is null||!Finite(s.Delta)||!Finite(s.SourceId))||data.Foods.Any(f=>f is null||!FodderPolicy.ValidKey(f.Key)||!double.IsFinite(f.Value)||f.Value<=0))return new();
+            if(data.Stats.Any(s=>s is null||s.Key is null||s.Key.Length>120||!Finite(s.Value)||!Finite(s.Baseline))||data.Sources.Any(s=>s is null||s.Key is null||s.Label is null||!Finite(s.Delta)||!Finite(s.SourceId))||data.Foods.Any(f=>f is null||!FodderPolicy.ValidKey(f.Key)||!double.IsFinite(f.Value)||f.Value<0||!double.IsFinite(f.Quantity)||f.Quantity<1||f.Quantity>10000))return new();
             return data;
         }catch(JsonException){return new();}
     }
     private static bool Finite(double? v)=>v is null||double.IsFinite(v.Value);
     public static string Format(double? v,string unit)=>v is null?"—":v.Value.ToString("0.##",CultureInfo.InvariantCulture)+unit;
+    public static string FormatComparison(double? value,double? baseline,string unit){
+        if(value is null)return "—";
+        if(baseline is null)return Format(value,unit)+"（—）";
+        double delta=value.Value-baseline.Value;
+        if(Math.Abs(delta)<.005)delta=0;
+        return Format(value,unit)+"（"+(delta>=0?"+":"")+Format(delta,unit=="%"?" pp":unit)+"）";
+    }
     public string Explain(StatDefinition definition){
         var stat=Stats.FirstOrDefault(s=>s.Key==definition.Key);var b=new StringBuilder();
         b.AppendLine(definition.Name+" · 游戏实时值");b.AppendLine("当前："+Format(stat?.Value,definition.Unit));

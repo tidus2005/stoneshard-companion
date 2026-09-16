@@ -20,6 +20,7 @@ static int safe_list_size(RV list){
 static RV fodder_item(int index){RV args[2]={numeric(4770),numeric(index)},id=call_builtin(0x51f2980,2,args);RV item=instance_from_id(id);release_value(&id);return item;}
 static bool fodder_carried(RV item,double inventory){return isfinite(inventory)&&member_number(item,"owner")==inventory&&member_number(item,"fodder_value")>0;}
 static RV object_name(RV item){RV asset=get_member(item,"object_index");RV name=call_builtin(0x5335220,1,&asset);release_value(&asset);return name;}
+#include "forage_policy.h"
 static char telemetry_buffer[57344];static size_t telemetry_at;static bool telemetry_full;
 static void tj(const char* value){size_t n=strlen(value);if(telemetry_at+n>=sizeof(telemetry_buffer)){telemetry_full=true;return;}memcpy(telemetry_buffer+telemetry_at,value,n+1);telemetry_at+=n;}
 static void tq(const char* s){tj("\"");for(int i=0;s&&s[i]&&i<512;i++){unsigned char c=s[i];char b[8];if(c=='"'||c=='\\'){b[0]='\\';b[1]=c;b[2]=0;tj(b);}else if(c<32){snprintf(b,sizeof(b),"\\u%04x",c);tj(b);}else{b[0]=c;b[1]=0;tj(b);}}tj("\"");}
@@ -57,9 +58,11 @@ static void refresh_telemetry(bool play,RV player){
     for(int i=0;i<256;i++){
         if(telemetry_at>sizeof(telemetry_buffer)-20000)break;
         RV item=fodder_item(i);if(!valid_object(item)){release_value(&item);foods_complete=true;break;}
-        if(fodder_carried(item,inventory)){
-            RV key=object_name(item),label=get_member(item,"name");if(!first)tj(",");first=false;
-            tj("{\"key\":");tq(text_value(key));tj(",\"name\":");tq(text_value(label));tj(",\"value\":");tn(member_number(item,"fodder_value"));tj("}");release_value(&key);release_value(&label);
+        if(member_number(item,"owner")==inventory){
+            RV key=object_name(item),label=get_member(item,"name");
+            if(forage_rule_index(text_value(key))<0&&!fodder_carried(item,inventory)){release_value(&key);release_value(&label);release_value(&item);continue;}
+            if(!first)tj(",");first=false;
+            tj("{\"key\":");tq(text_value(key));tj(",\"name\":");tq(text_value(label));tj(",\"value\":");tn(fmax(0,member_number(item,"fodder_value")));tj(",\"quantity\":");tn(forage_quantity(item));tj("}");release_value(&key);release_value(&label);
         }release_value(&item);
     }
     tj("],\"foodsComplete\":");tj(foods_complete?"true":"false");append_journey(player);

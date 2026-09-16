@@ -42,7 +42,7 @@ public sealed class SaveEngine
         FileStream manager;
         try{manager=new(lockPath,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);}
         catch(IOException e){throw new IOException("另一个存档管理器正在操作，或备份目录无法写入。请等待其完成并检查目录权限。",e);}
-        using(manager){return operation==SaveOperation.Restore?Restore(archive??throw new IOException("请选择现有备份。")):Backup(operation==SaveOperation.Latest).Result;}
+        using(manager){return operation==SaveOperation.Restore?Restore(archive??throw new IOException("请选择现有备份。")):Backup(operation==SaveOperation.Latest,operation==SaveOperation.Latest?"Stoneshard-current-state":"Stoneshard-manual").Result;}
     }
     private static bool Within(string path,string root)=>path.Equals(root,StringComparison.OrdinalIgnoreCase)||path.StartsWith(Path.EndsInDirectorySeparator(root)?root:root+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase);
     private static void AssertOrdinary(string path)

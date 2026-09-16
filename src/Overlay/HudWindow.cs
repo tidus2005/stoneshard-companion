@@ -17,7 +17,7 @@ public sealed class HudWindow : Window
     private readonly List<(Button Button,FrameworkElement Icon,TextBlock Label,uint Capability)> cells=[];
     private readonly TextBlock[] values=new TextBlock[4];
     private readonly TextBlock footer=new(){FontSize=10,Foreground=Brushes.Silver,TextTrimming=TextTrimming.CharacterEllipsis};
-    private readonly Button speed,drink,torch,labels,autoVisor;
+    private readonly Button speed,drink,torch,labels,autoVisor,autoForage;
     private readonly JourneyEstimator estimator=new();
     private readonly TextBlock provisions=new(){FontSize=11,Foreground=Brushes.Wheat,TextTrimming=TextTrimming.CharacterEllipsis};
     private readonly TextBlock equipment=new(){FontSize=11,Foreground=Brushes.Silver,TextTrimming=TextTrimming.CharacterEllipsis};
@@ -74,18 +74,23 @@ public sealed class HudWindow : Window
         autoVisor=Add("visored-helm","自动面罩","遇敌关闭，安全时打开；手动开合会关闭自动模式",4,owner.ToggleAutoVisor);
         drink=Add("water-flask","喝水","一键喝水 · 右键设置自动喝水",16,()=>owner.RunAction(EngineCommand.Drink));
         torch=Add("torch","火把","切换火把 · 右键设置自动保持点亮",32,()=>owner.RunAction(EngineCommand.Torch));
-        labels=Add("eye-shield","常显","物品常显 · Ctrl+Alt+L",0,owner.ToggleLabels);
+        labels=Add("eye-shield","常显","物品与容器常显 · Ctrl+Alt+L",0,owner.ToggleLabels);
         Add("eye-target","地图中心","人物走向中心；中心被挡时向外顺时针寻找可达空格 · Ctrl+Alt+Home",2,()=>owner.Walk(5));
         Add("crosshair","角色视角","镜头回到角色 · Ctrl+Alt+R",2,()=>owner.RunAction(EngineCommand.Player));
         speed=Add("speed-normal","1×","正常 → 加速 2× → 急速 3×，点击直接切换",0,()=>owner.ChooseSpeed(SpeedControl.Next(owner.PreferredSpeed)));
-        Add("save-backup","备份","一键备份已落盘的存档",0,()=>owner.Backup(false));
+        Add("save-backup","快速备份","保留已落盘的存档，并记为快速读档目标；请先在游戏内保存",0,()=>owner.Backup(false));
         Add("save-history","存档","查看历史备份与还原",0,owner.OpenSaves);
         Add("gears","设置","设置与快捷键",0,owner.OpenSettings);
         Add("pause-button","停止","停止行走、加速、常显和自动补给 · Ctrl+Alt+S",0,owner.Reset);
         Add("return-arrow","收起","隐藏面板 · Ctrl+Alt+O 恢复",0,owner.ToggleFold);
+        autoForage=Add("gears","自动采集","按配置自动拾取与采集 · 右键配置种类和共享数量",0,owner.ToggleAutoForage);
+        var collectionMenu=new ContextMenu();var collectionSettings=new MenuItem{Header="采集与剥取配置"};collectionSettings.Click+=(_,_)=>owner.OpenFodder();collectionMenu.Items.Add(collectionSettings);autoForage.ContextMenu=collectionMenu;
         var fodder=Add("meat","饲料","一键制作勾选材料 · 右键选择材料",2,owner.MakeFodder);
         var fodderMenu=new ContextMenu();var configure=new MenuItem{Header="选择饲料材料"};configure.Click+=(_,_)=>owner.OpenFodder();fodderMenu.Items.Add(configure);fodder.ContextMenu=fodderMenu;
         AddSupplyMenu(drink,true);AddSupplyMenu(torch,false);
+        Add("return-arrow","快速读档","还原最近一次手动备份；先查看目标与确认，不受 latest 快照影响",0,owner.QuickRestore);
+        actions.Children.Clear();
+        foreach(int i in new[]{0,1,2,3,13,4,5,6,7,8,15,9,14,10,11,12})actions.Children.Add(cells[i].Button);
         Grid.SetRow(provisions,3);body.Children.Add(provisions);Grid.SetRow(equipment,4);body.Children.Add(equipment);
         var footerRow=new DockPanel();Grid.SetRow(footerRow,5);body.Children.Add(footerRow);
         var version=new TextBlock{Text=$"v{App.Version}",FontSize=10,Foreground=Muted,Margin=new Thickness(8,0,0,0),VerticalAlignment=VerticalAlignment.Center};
@@ -180,8 +185,10 @@ public sealed class HudWindow : Window
         drink.ToolTip=$"{(current?$"饮水剩余 {state!.WaterUses} 次":"等待进入游戏")}\n自动喝水：{(coordinator.Preferences.AutoDrink?"开启":"关闭")}，右键切换";
         torch.ToolTip=$"{(current?$"可用火把 {state!.TorchCount} 个":"等待进入游戏")}\n自动保持点亮：{(coordinator.Preferences.AutoTorch?"开启":"关闭")}，右键切换";
         drink.BorderBrush=coordinator.Preferences.AutoDrink?Active:Muted;torch.BorderBrush=coordinator.Preferences.AutoTorch?Active:Muted;
+        autoForage.BorderBrush=coordinator.Preferences.AutoForage?Active:Muted;
+        autoForage.ToolTip=coordinator.Preferences.AutoForage?"自动采集：已开启 · 右键配置":"自动采集：已关闭 · 点击开启";
         labels.BorderBrush=coordinator.Preferences.ShowLabels?Active:Muted;
-        labels.ToolTip=coordinator.Preferences.ShowLabels?(current&&state!.HighlightApplied?"物品常显已开启":"物品常显已记住，等待游戏恢复"):"开启物品常显 · Ctrl+Alt+L";
+        labels.ToolTip=coordinator.Preferences.ShowLabels?(current&&state!.HighlightApplied?"物品与容器常显已开启":"物品与容器常显已记住，等待游戏恢复"):"开启物品与容器常显 · Ctrl+Alt+L";
         cells[7].Label.Visibility=Visibility.Visible;cells[7].Label.Text=$"{coordinator.PreferredSpeed}×";
         if(speedShown!=coordinator.PreferredSpeed){
             speedShown=coordinator.PreferredSpeed;
@@ -191,6 +198,7 @@ public sealed class HudWindow : Window
         AutomationProperties.SetName(speed,$"速度：{SpeedControl.Name(speedShown)} {speedShown}倍");
         speed.Foreground=current&&state!.SuspendReasons==0&&Math.Abs(state.Multiplier-coordinator.PreferredSpeed)<.01?Active:Muted;
         cells[8].Button.IsEnabled=!coordinator.Saves.Busy;
+        cells[15].Button.IsEnabled=!coordinator.Saves.Busy;
         walking=current&&state!.WalkState==1;
         foreach(var (button,direction) in navigation){
             button.IsEnabled=state is not null&&HudPolicy.CanWalk(state.Ready,state.Fresh,state.SceneReady,foreground||ownedForeground,state.UiFlags)&&(state.Capabilities&64)!=0;

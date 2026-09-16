@@ -20,10 +20,12 @@ public sealed class AppUpdater : IDisposable
     public bool Installing=>installing;
     public static string Root=>Path.Combine(UserPreferences.Folder,"Updates");
     public AppUpdater(MainWindow owner){this.owner=owner;timer.Tick+=async(_,_)=>{if(owner.Preferences.AutoUpdate&&DateTime.UtcNow>=nextCheck)await CheckAsync(false);await InstallWhenIdle();};}
-    public void Start(){if(App.TestWindows)return;timer.Start();_=CheckAsync(false);}
+    private static bool RuntimeHosted=>string.Equals(Path.GetFileNameWithoutExtension(Environment.ProcessPath),"dotnet",StringComparison.OrdinalIgnoreCase);
+    public void Start(){if(RuntimeHosted){Report("开发运行模式：请使用本地开发版更新");return;}if(App.TestWindows)return;timer.Start();_=CheckAsync(false);}
     private void Report(string text){Status=text;owner.RefreshUpdateStatus();}
     public async Task CheckAsync(bool userRequested)
     {
+        if(RuntimeHosted){Report("开发运行模式：请使用本地开发版更新");return;}
         if(busy||installing||owner.ExitRequested||cancellation.IsCancellationRequested)return;
         if(!userRequested&&!owner.Preferences.AutoUpdate)return;
         if(package is not null){await InstallWhenIdle();return;}

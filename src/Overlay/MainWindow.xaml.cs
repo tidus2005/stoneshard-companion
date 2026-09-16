@@ -62,11 +62,11 @@ public partial class MainWindow : Window
         tray.DoubleClick+=(_,_)=>Dispatcher.Invoke(OpenSettings);
         SourceInitialized+=InitializeNative;Closing+=OnClosing;
         poll.Tick+=async(_,_)=>await PollAsync();
-        Loaded+=async(_,_)=>{Hide();RefreshHud(null);poll.Start();Updater.Start();await PollAsync();};
+        Loaded+=async(_,_)=>{Hide();OpenSettings();RefreshHud(null);poll.Start();Updater.Start();await PollAsync();};
     }
     public async void MakeFodder(){if(Preferences.FodderMaterials.Count==0){OpenFodder();return;}SetStatus(await CraftFodder());}
     public void OpenFodder(){
-        if(fodderWindow is null){fodderWindow=new(this){Owner=hud};fodderWindow.Closed+=(_,_)=>fodderWindow=null;}
+        if(fodderWindow is null){fodderWindow=new(this){Owner=this};fodderWindow.Closed+=(_,_)=>fodderWindow=null;}
         fodderWindow.Show();fodderWindow.Activate();
     }
     public async Task<string> CraftFodder(){
@@ -152,7 +152,7 @@ public partial class MainWindow : Window
             if(closing)return;
             if(state.Ready&&state.Fresh&&!busy){
                 int flags=(Preferences.AutoVisor?1:0)|(Preferences.AutoForage?2:0);
-                string payload=FodderPolicy.Selection(Preferences.FodderMaterials);
+                string payload=ForagePolicy.Encode(Preferences.ForageRules);
                 string sync=$"{session?.Key}:{flags}:{payload}";
                 if(sync!=automationSynced||(state.Telemetry.AutomationFlags!=flags&&Environment.TickCount64-automationSyncedAt>2500)){
                     busy=true;try{var result=await bridge.SendAsync(EngineCommand.AutomationSet,flags,payload:payload);if(result.Error==0){automationSynced=sync;automationSyncedAt=Environment.TickCount64;}}finally{busy=false;}
@@ -204,6 +204,7 @@ public partial class MainWindow : Window
         UserPreferences.Log("explicit-reset");SetStatus("已选择正常速度，正在恢复");
     }
     public void ToggleLabels(){Preferences.ShowLabels=!Preferences.ShowLabels;SavePreferences();ReturnToGame();}
+    public void ToggleAutoForage(){Preferences.AutoForage=!Preferences.AutoForage;SavePreferences();}
     public void ToggleAutoVisor(){Preferences.AutoVisor=!Preferences.AutoVisor;SavePreferences();ReturnToGame();}
     public void ToggleWalkKeys(){Preferences.AutoWalkKeys=!Preferences.AutoWalkKeys;SavePreferences();ReturnToGame();}
     private bool ReturnToGame()
@@ -270,26 +271,51 @@ public partial class MainWindow : Window
     public void OpenSettings()
     {
         if(closing)return;
-        if(settings is null){settings=new SettingsWindow(this){Owner=hud,Topmost=true};settings.Closed+=(_,_)=>settings=null;settings.Show();}else settings.Activate();
+        if(settings is null){settings=new SettingsWindow(this){Owner=this,Topmost=true};settings.Closed+=(_,_)=>settings=null;}
+        if(settings.WindowState==WindowState.Minimized)settings.WindowState=WindowState.Normal;
+        settings.Show();settings.Activate();
+        UserPreferences.Log("startup-settings-visible="+settings.IsVisible);
     }
     public void ResetLayout(){Preferences.HasHudPlacement=false;SavePreferences();}
     public void OpenSaves()
     {
         if(closing)return;
-        if(savesWindow is null){savesWindow=new SaveWindow(this){Owner=hud,Topmost=true};savesWindow.Closed+=(_,_)=>savesWindow=null;savesWindow.Show();}else savesWindow.Activate();
+        if(savesWindow is null){savesWindow=new SaveWindow(this){Owner=this,Topmost=true};savesWindow.Closed+=(_,_)=>savesWindow=null;savesWindow.Show();}else savesWindow.Activate();
+    }
+    private void RefreshSaveWindow(bool reload=true){
+        try{savesWindow?.Refresh(reload);}catch(Exception e){UserPreferences.Log("save-window-refresh-failed "+e);}
     }
     public async void Backup(bool latest)=>await SaveAsync(latest?SaveOperation.Latest:SaveOperation.Backup);
+    public SaveArchive? ResolveQuickBackup(IReadOnlyList<SaveArchive> archives)
+    {
+        var target=QuickBackupSelection.Resolve(archives,Preferences.QuickRestoreArchive);
+        if(target is not null&&Preferences.QuickRestoreArchive is null)RememberQuickBackup(target.Path);
+        return target;
+    }
+    private void RememberQuickBackup(string path)
+    {
+        Preferences.QuickRestoreArchive=path;
+        try{Preferences.Save();}
+        catch(Exception e){SaveStatus+="；快速读档目标仅本次有效，配置保存失败："+e.Message;UserPreferences.Log("quick-backup-preference-failed "+e);}
+    }
+    public void QuickRestore()
+    {
+        if(Saves.Busy||closing||ExitRequested)return;
+        OpenSaves();savesWindow?.PrepareQuickRestore();
+    }
     public async Task SaveAsync(SaveOperation operation,string? archive=null)
     {
         if(Saves.Busy||ExitRequested||closing||Updater.Installing)return;
-        var progress=new Progress<string>(message=>{SaveStatus=message;savesWindow?.Refresh(false);});
-        SaveStatus=operation==SaveOperation.Restore?"正在准备还原…":"正在准备备份…";savesWindow?.Refresh();
+        UserPreferences.Log($"save {operation} starting");
+        var progress=new Progress<string>(message=>{SaveStatus=message;RefreshSaveWindow(false);});
+        SaveStatus=operation==SaveOperation.Restore?"正在准备还原…":"正在准备备份…";RefreshSaveWindow();
         try{
             var result=await Saves.RunAsync(operation,archive,progress);
             SaveStatus=operation==SaveOperation.Restore?$"文件还原完成 · {result.Files} 个文件校验通过；游戏读档尚需确认":$"备份成功 · {DateTime.Now:HH:mm:ss} · {result.Files} 个文件";
             UserPreferences.Log($"save {operation} verified files={result.Files} archive={result.Archive}");
+            if(operation==SaveOperation.Backup)RememberQuickBackup(result.Archive);
         }catch(Exception e){SaveStatus="存档操作失败："+e.Message;ShowError(SaveStatus);}
-        finally{savesWindow?.Refresh();if(ExitRequested)Close();}
+        finally{RefreshSaveWindow();if(ExitRequested)Close();}
     }
     public void RequestExit()
     {

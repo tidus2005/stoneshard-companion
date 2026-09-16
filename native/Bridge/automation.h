@@ -1,10 +1,11 @@
 #pragma once
+#include "peel.h"
 // All work runs on the game's own timer thread, under the foreground/lease gate.
 static uint64_t visor_next,visor_last_threat,forage_due,forage_scan_due;
 static double forage_id=-1,forage_x,forage_y,forage_route_x,forage_route_y,forage_before;
 static int forage_clicks,forage_path_tries;
 static bool forage_move_pending;
-static uint64_t forage_seen_scene;
+static uint64_t forage_seen_scene,forage_inventory_due;
 static uint64_t forage_path_due;
 static double forage_last_x,forage_last_y;
 static void reconcile_visor(uint32_t reasons){
@@ -21,11 +22,10 @@ static void reconcile_visor(uint32_t reasons){
        ((close&&open==1)||(!close&&open==0))){toggle_visor();visor_next=now+1000;}
     release_value(&helmet);release_value(&player);
 }
+static int forage_inventory_key=-1;
 static double selected_fodder_value(void){
-    RV inventory=find_instance("o_inventory");double owner=member_number(inventory,"id"),total=0;release_value(&inventory);
-    for(int i=0;i<256;i++){RV item=fodder_item(i);if(!valid_object(item)){release_value(&item);return total;}
-        if(fodder_carried(item,owner)){RV name=object_name(item);if(forage_material(text_value(name)))total+=member_number(item,"fodder_value");release_value(&name);}release_value(&item);}
-    return NAN; // Incomplete inventory cannot confirm collection.
+    if(!forage_inventory())return NAN;
+    return forage_inventory_key>=0?forage_totals[forage_inventory_key]+(forage_inventory_key<7?forage_rotten_totals[forage_inventory_key]:0):NAN;
 }
 // Plants use tile corners while actors use tile centers; compare occupied cells.
 static bool forage_adjacent(double px,double py,double x,double y){
@@ -42,7 +42,7 @@ static bool forage_selected(RV item,int kind){
     if(kind==1&&member_number(item,"is_execute")!=0)return false;
     RV asset=get_member(item,kind==1?"berryType":"inv_object");
     if(!isfinite(number(asset))||number(asset)<0){release_value(&asset);return false;}
-    RV name=call_builtin(0x5335220,1,&asset);bool chosen=forage_material(text_value(name));
+    RV name=call_builtin(0x5335220,1,&asset);int index=forage_rule_index(text_value(name));bool chosen=forage_wanted(index);
     release_value(&name);release_value(&asset);return chosen;
 }
 #include "forage_targets.h"
@@ -129,18 +129,28 @@ static bool reconcile_forage(uint32_t reasons){
             double tx=member_number(target,"x"),ty=member_number(target,"y");release_value(&target);
             if(!visible||!forage_adjacent(px,py,tx,ty)||!native_click_world(tx,ty)){release_value(&player);forage_stop(WALK_BLOCKED);return true;}
             forage_phase=3;forage_due=now+4000;forage_scan_due=now+1000;forage_clicks++;
-        }else if(forage_phase==3&&selected_fodder_value()>forage_before){
+        }else if((forage_phase==3&&selected_fodder_value()>forage_before)||forage_phase==6){
             if(exit_mouse_phase){release_value(&player);return true;}
+            if(forage_phase==6){
+                if(!forage_inventory()){release_value(&player);forage_stop(WALK_BLOCKED);return true;}
+                RV source=instance_from_id(numeric(peel_source));bool remains=valid_object(source);release_value(&source);
+                if(remains||forage_totals[14]<=peel_before){release_value(&player);return true;}
+            }
+            // Pause the route while the original item context action/recipe runs.
             shared->walk_state=0;shared->walk_phase=0;
+            int peeled=peel_surplus();
+            if(peeled!=0){
+                shared->walk_state=WALK_ACTIVE;
+                if(peeled<0)forage_stop(WALK_BLOCKED);
+                else{forage_phase=6;forage_due=now+5000;telemetry_next=0;}
+                release_value(&player);return true;
+            }
             int result=craft_fodder(true);shared->walk_state=WALK_ACTIVE;
             if(result==0){
-                // The native close routine runs the menu's return/cleanup event.
-                // Only our own empty crafting session is closed; failed capacity
-                // checks leave its contents visible for manual recovery.
                 RV menu=find_instance("o_craftingConsumsMenu");
                 if(valid_object(menu)){RV args[2]={numeric(7),numeric(25)},out=call_instance_builtin(0x51ebd00,menu,2,args);release_value(&out);}release_value(&menu);
                 if(forage_active>=0)forage_targets[forage_active].done=true;
-                forage_cursor[0]=forage_cursor[1]=0; // Destroyed plants can shift instance enumeration.
+                forage_cursor[0]=forage_cursor[1]=0;
                 forage_count++;forage_phase=4;forage_due=now+4000;forage_scan_due=now+500;telemetry_next=0;
             }else forage_stop(WALK_BLOCKED);
         }else if(forage_phase==3&&!exit_mouse_phase&&now>=forage_scan_due&&forage_clicks<3){
@@ -156,10 +166,25 @@ static bool reconcile_forage(uint32_t reasons){
         release_value(&player);return true;
     }
     if(shared->walk_phase){release_value(&player);return false;}
+    if(now>=forage_inventory_due){forage_inventory_due=now+200;forage_inventory();}
+    if(!forage_inventory_complete){release_value(&player);return false;}
+    // Process already-carried plants on a safe, settled walking frame too.
+    if(forage_rules[13].enabled&&(forage_rules[13].flags&2)&&forage_totals[13]>0){
+        forage_route_x=shared->walk_x;forage_route_y=shared->walk_y;
+        RV flag=numeric(0),stopped=call_script(0x19123a0,player,1,&flag);release_value(&stopped);
+        walk_dispatch_pending=false;shared->walk_state=0;
+        int peeled=peel_surplus();shared->walk_state=WALK_ACTIVE;
+        if(peeled!=0){forage_active=-1;if(peeled<0)forage_stop(WALK_BLOCKED);else{forage_phase=6;forage_due=now+5000;telemetry_next=0;}release_value(&player);return true;}
+        forage_resume(player);release_value(&player);return true;
+    }
     forage_discover(now);
     if(now<forage_scan_due){release_value(&player);return false;}
     int next=forage_nearest(px,py,now);
     if(next>=0){
+        RV target=instance_from_id(numeric(forage_targets[next].id));
+        RV asset=get_member(target,forage_targets[next].kind?"berryType":"inv_object");
+        RV name=call_builtin(0x5335220,1,&asset);forage_inventory_key=forage_rule_index(text_value(name));
+        release_value(&name);release_value(&asset);release_value(&target);
         forage_before=selected_fodder_value();if(!isfinite(forage_before)){release_value(&player);return false;}
         forage_active=next;forage_id=forage_targets[next].id;forage_route_x=shared->walk_x;forage_route_y=shared->walk_y;
         RV flag=numeric(0),stopped=call_script(0x19123a0,player,1,&flag);release_value(&stopped);

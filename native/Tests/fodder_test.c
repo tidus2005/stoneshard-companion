@@ -15,7 +15,7 @@ static bool valid_object(RV r){return r.real>=0;}
 static RV find_instance(const char* name){return numeric(!strcmp(name,"o_inventory")?1000:!strcmp(name,"o_player")?2000:context?3000:-1);}
 static bool supply_safe(RV player){return safe;}
 static void release_value(RV* r){}
-static double member_number(RV r,const char* name){if(!strcmp(name,"id"))return r.real;return r.item>=0?(!strcmp(name,"owner")?items[r.item].owner:items[r.item].value):NAN;}
+static double member_number(RV r,const char* name){if(!strcmp(name,"id"))return r.real;if(!strcmp(name,"can_stack"))return r.item>=0&&items[r.item].stack>0?1:0;if(!strcmp(name,"stack"))return r.item>=0?items[r.item].stack:NAN;return r.item>=0?(!strcmp(name,"owner")?items[r.item].owner:items[r.item].value):NAN;}
 static RV get_member(RV r,const char* name){if(!strcmp(name,"id"))return numeric(r.real);return numeric(containers?(r.real==1000?4000:5000):-1);}
 static bool has_member(RV r,const char* name){return containers;}
 static RV instance_from_id(RV r){if(r.real>=1000)return r;int i=(int)r.real-1;return i>=0&&i<total&&items[i].alive?(RV){i+1,i,NULL}:numeric(-1);}
@@ -41,7 +41,7 @@ static RV call_script(uintptr_t address,RV self,int count,RV* args){
 }
 #include "../Bridge/fodder.h"
 static void check(bool ok,const char* label){if(!ok){fprintf(stderr,"FAIL %s\n",label);exit(1);}checks++;}
-static void reset(void){memset(shared,0,sizeof(*shared));memset(items,0,sizeof(items));total=4;calls=opens=0;safe=containers=true;context=refuse=full=move_fail=false;produced=0;items[0]=(Item){true,1000,4,"berry"};items[1]=(Item){true,1000,8,"herb"};items[2]=(Item){true,9999,5,"berry"};items[3]=(Item){true,1000,0,"medicine"};strcpy(shared->fodder_selection,"|berry|");}
+static void reset(void){forage_configure("F1;0,0,5;1,0,5;2,0,5;3,0,5;4,0,5;5,0,5;6,0,5;16,0,5;17,0,5;18,0,5;19,0,5;20,0,5;21,0,5;22,0,5;23,0,5;24,0,5;25,0,5;");memset(shared,0,sizeof(*shared));memset(items,0,sizeof(items));total=4;calls=opens=0;safe=containers=true;context=refuse=full=move_fail=false;produced=0;items[0]=(Item){true,1000,4,"berry"};items[1]=(Item){true,1000,8,"herb"};items[2]=(Item){true,9999,5,"berry"};items[3]=(Item){true,1000,0,"medicine"};strcpy(shared->fodder_selection,"|berry|");}
 int main(void){
  reset();check(craft_selected_fodder()==0&&calls==1&&opens==1&&produced==4,"selected material goes through original crafting container and recipe");
  check(items[1].alive&&items[1].owner==1000&&items[1].value==8&&items[2].alive&&items[3].alive,"unselected herbs other owners and medicine are untouched");
@@ -65,6 +65,11 @@ int main(void){
  reset();items[0].key="o_inv_agrimony";items[1].key="o_inv_horsetail";shared->fodder_selection[0]=0;check(craft_fodder(true)==0&&produced==4&&items[1].alive,"automatic recipe uses eligible plants with no manual selection");
  reset();items[total++]=(Item){true,1000,0,"o_inv_caravan_fodder",3};items[total++]=(Item){true,1000,0,"o_inv_caravan_fodder",2};check(craft_selected_fodder()==0&&!items[4].alive&&items[5].stack==9&&!items[6].alive,"older scattered stacks consolidate along with new output");
  reset();items[0].key="o_inv_blueberry";items[1].key="o_inv_rhubarb";check(craft_fodder(true)==0&&produced==4&&items[1].alive,"automatic crafting preserves carried rhubarb while consuming berries");
- reset();items[0].key="o_inv_lentil";items[1].key="o_inv_leek";check(craft_fodder(true)==7&&!opens&&items[0].alive&&items[1].alive,"automatic crafting never opens recipe for protected food ingredients");
+ reset();items[0].key="o_inv_lentil";items[1].key="o_inv_leek";check(craft_fodder(true)==0&&!opens&&items[0].alive&&items[1].alive,"automatic crafting never opens recipe for protected food ingredients");
+ reset();items[0].key=items[1].key="o_inv_blueberry";forage_configure("F1;2,1,5;");check(craft_fodder(true)==0&&produced==4&&items[1].alive,"only surplus is consumed; one native unit remains");
+ reset();items[0].key=items[1].key="o_inv_blueberry";items[0].stack=5;items[1].stack=4;forage_configure("F1;2,6,5;");check(craft_fodder(true)==0&&!opens&&items[0].alive&&items[1].alive,"whole stacks crossing reserve remain untouched");
+ reset();items[0].key="o_inv_blueberry";forage_configure("F1;2,0,4;");check(craft_fodder(true)==0&&!opens&&items[0].alive,"collection-only rule never crafts surplus");
+ reset();items[0].key="o_inv_lentil";forage_configure("F1;13,0,7;");check(craft_fodder(true)==0&&!opens&&items[0].alive,"peeling takes priority over turning plant into fodder");
+ reset();check(!forage_configure("F1;2,0,5;2,0,4;")&&!forage_configure("F1;99,0,4;")&&!forage_configure("F1;2,1000,4;")&&!forage_configure("F1;2,0,5"),"duplicate, out of bounds, excessive and incomplete rules are rejected");
  printf("%d fodder adapter checks passed; no game accessed.\n",checks);
 }

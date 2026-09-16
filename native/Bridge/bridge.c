@@ -42,6 +42,7 @@ static void set_speed(double fps) {
 #include "walk_native.h"
 #include "walk.h"
 #include "automation.h"
+#include "inventory_cleanup.h"
 static void reconcile_speed(void){
     DWORD pid=0;GetWindowThreadProcessId(GetForegroundWindow(),&pid);
     uint64_t heartbeat=(uint64_t)InterlockedCompareExchange64(&shared->heartbeat,0,0);
@@ -68,6 +69,7 @@ static void reconcile_speed(void){
     shared->highlight_applied=highlight_applied?1:0;
     if(reasons)walk_held_keys=0;
     reconcile_visor(reasons);
+    reconcile_inventory(reasons);
     if(!reconcile_forage(reasons))reconcile_walk(reasons);
 }
 static void publish(int error,const char* message) {
@@ -121,9 +123,9 @@ static void on_command(void) {
     else if(cmd==14){int result=(!isfinite(arg)||floor(arg)!=arg||arg<0||arg>9)?4:request_walk((int)arg);publish(result,result?"Native walk unavailable":"Native map journey requested");}
     else if(cmd==17){int result=craft_selected_fodder();publish(result,result?"饲料制作已停止：请确认材料、安全状态和背包空间":"已调用原版饲料制作；请核对背包产物");}
     else if(cmd==16){if(arg!=0&&arg!=1)publish(4,"Invalid walk keys state");else{set_walk_keys(arg==1);publish(0,"Walk keys intent synchronized");}}
-    else if(cmd==18){if(!isfinite(arg)||floor(arg)!=arg||arg<0||arg>3)publish(4,"Invalid automation flags");else{automation_flags=(unsigned)arg;memcpy(automation_selection,shared->fodder_selection,sizeof(automation_selection));automation_selection[2047]=0;publish(0,"Automation preferences synchronized");}}
+    else if(cmd==18){if(!isfinite(arg)||floor(arg)!=arg||arg<0||arg>3)publish(4,"Invalid automation flags");else{if(!forage_configure(shared->fodder_selection)){automation_flags=0;publish(4,"Invalid forage rules; automation disabled");return;}if(forage_phase)forage_stop(WALK_MANUAL);forage_reset_targets();forage_inventory_due=0;automation_flags=(unsigned)arg;memcpy(automation_selection,shared->fodder_selection,sizeof(automation_selection));automation_selection[2047]=0;publish(0,"Automation preferences synchronized");}}
     else if(cmd==11){if(arg!=0&&arg!=1)publish(4,"Invalid water mode");else{int result=drink_water(arg==1);publish(result,result?"Water action unavailable or not confirmed":"Water consumed by native action");}}
-    else if(cmd==12){if(arg!=0&&arg!=1&&arg!=2&&arg!=17&&arg!=18)publish(4,"Invalid torch mode");else{int mode=(int)arg;int result=toggle_torch(mode&3,(mode&16)!=0);publish(result,result?"Torch action unavailable or not confirmed":"Torch native action confirmed");}}
+    else if(cmd==12){if(arg!=0&&arg!=1&&arg!=2&&arg!=18&&arg!=18)publish(4,"Invalid torch mode");else{int mode=(int)arg;int result=toggle_torch(mode&3,(mode&16)!=0);publish(result,result?"Torch action unavailable or not confirmed":"Torch native action confirmed");}}
     else publish(2,"Capability not initialized");
     InterlockedExchange(&shared->ack_seq,seq);
 }
@@ -158,6 +160,7 @@ static LRESULT CALLBACK bridge_proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         *(void**)(game+0x990b738)=saved_self;in_callback=false;
         if(consumed)return 0;
     }
+    if(msg==WM_LBUTTONDOWN||msg==WM_RBUTTONDOWN||msg==WM_MBUTTONDOWN||msg==WM_KEYDOWN)inventory_input_at=GetTickCount64();
     if(msg==WM_LBUTTONDOWN||msg==WM_RBUTTONDOWN||msg==WM_MBUTTONDOWN||
        (msg==WM_KEYDOWN&&wp!=VK_MENU&&wp!=VK_CONTROL&&wp!=VK_SHIFT))
         if(shared->walk_state==WALK_ACTIVE&&!in_callback&&!(msg==WM_LBUTTONDOWN&&(ULONG_PTR)GetMessageExtraInfo()==WALK_MOUSE_MARKER)){
@@ -218,7 +221,7 @@ __declspec(dllexport) DWORD WINAPI BridgeStart(void* ignored) {
     // Startup can expose a window before the frame manager is initialized.
     // Do not publish a mapping until a valid baseline exists; allow a later retry.
     baseline=get_speed();if(!isfinite(baseline)||baseline<1 || baseline>240)return start_failed(15);
-    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v14.%lu",GetCurrentProcessId());
+    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v18.%lu",GetCurrentProcessId());
     mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,NULL,PAGE_READWRITE,0,65536,name);
     if(!mapping)return start_failed(12);
     if(GetLastError()==ERROR_ALREADY_EXISTS)return start_failed(13);

@@ -73,6 +73,8 @@ int main(void){
     original_label_renderer=fake_draw;
     RV out={0},input=numeric(0),second=numeric(9);RV* args[]={&input,&second};
     reconcile_highlight(true);query_labels_at(0x3992a2f,NULL,NULL,&out,2,args);check(out.real==1&&input.real==0&&second.real==9,"label override preserves caller arguments");
+    query_labels_at(0x4c1f806,NULL,NULL,&out,2,args);check(out.real==1,"container nameplate creation follows auto display");
+    query_labels_at(0x49d4703,NULL,NULL,&out,2,args);check(out.real==1,"container nameplate persists without held Alt");
     idle=false;query_labels_at(0x3992a2f,NULL,NULL,&out,2,args);check(out.real==1,"labels remain enabled while moving");
     query_labels_at(0x49cc96e,NULL,NULL,&out,2,args);check(out.real==1,"label retention stays enabled between steps");
     query_labels_at(0x1805180,NULL,NULL,&out,2,args);check(out.real==0,"movement query remains native while labels enabled");

@@ -20,7 +20,12 @@ if(args.Contains("--wait")){
 '@ | Set-Content -LiteralPath (Join-Path $fixture 'Program.cs')
 dotnet publish (Join-Path $fixture 'fixture.csproj') -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -o (Join-Path $fixture 'published') --nologo
 if($LASTEXITCODE -ne 0){throw 'Fixture build failed'}
-$updates=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'StoneshardCompanion\Updates'
+# Match production shared configuration discovery without reading or writing the
+# user's installed game configuration. This marker is never executed.
+$testGame=Join-Path $fixture ('game-'+[guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force -Path $testGame | Out-Null
+[IO.File]::WriteAllText((Join-Path $testGame 'StoneShard.exe'),'isolated discovery fixture')
+$updates=Join-Path $testGame 'StoneshardCompanion\Updates'
 $work=Join-Path $updates ([guid]::NewGuid().ToString('N'))
 $target=Join-Path $fixture ([guid]::NewGuid().ToString('N'))
 $staged=Join-Path $work 'package'
@@ -46,6 +51,7 @@ $request=Join-Path $work 'request.json'
 @{Parent=$parent.Id;Started=$parent.StartTime.ToFileTimeUtc();Target=$target;Package=$staged} | ConvertTo-Json | Set-Content -LiteralPath $request
 $helperStart=[Diagnostics.ProcessStartInfo]::new((Join-Path $work 'UpdateHelper.exe'))
 $helperStart.UseShellExecute=$false;$helperStart.CreateNoWindow=$true;$helperStart.WindowStyle='Hidden'
+$helperStart.Environment['STONESHARD_DIR']=$testGame
 $helperStart.ArgumentList.Add('--apply-update');$helperStart.ArgumentList.Add($request)
 $helper=[Diagnostics.Process]::Start($helperStart)
 try{

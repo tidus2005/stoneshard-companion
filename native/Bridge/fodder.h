@@ -1,5 +1,5 @@
 #pragma once
-#include "fodder_catalog.h"
+#include "forage_policy.h"
 static bool fodder_selected(const char* selection,const char* key){
     if(!key||!*key||strlen(key)>120)return false;char token[128];snprintf(token,sizeof(token),"|%s|",key);return strstr(selection,token)!=NULL;
 }
@@ -34,12 +34,22 @@ static int craft_fodder(bool automatic){
     char selection[2048];memcpy(selection,shared->fodder_selection,sizeof(selection));selection[sizeof(selection)-1]=0;
     RV inventory=find_instance("o_inventory");double inventory_id=member_number(inventory,"id");
     RV selected[256];int count=0;bool complete=false;
+    double remaining[FORAGE_RULE_COUNT];
+    if(automatic&&!forage_inventory()){release_value(&inventory);release_value(&player);return 7;}
+    memcpy(remaining,forage_totals,sizeof(remaining));
     for(int i=0;i<256;i++){
         RV item=fodder_item(i);if(!valid_object(item)){release_value(&item);complete=true;break;}
-        if(fodder_carried(item,inventory_id)){RV name=object_name(item);bool chosen=automatic?forage_material(text_value(name)):fodder_selected(selection,text_value(name));release_value(&name);if(chosen){selected[count++]=get_member(item,"id");}}
+        if(fodder_carried(item,inventory_id)){RV name=object_name(item);int index=forage_rule_index(text_value(name));
+            bool chosen=fodder_selected(selection,text_value(name));
+            if(automatic){
+                double quantity=forage_quantity(item);
+                chosen=index>=0&&forage_rules[index].enabled&&(forage_rules[index].flags&1)&&!(forage_rules[index].flags&2)&&isfinite(quantity)&&remaining[index]-quantity>=forage_keep(index);
+                if(chosen)remaining[index]-=quantity;
+            }release_value(&name);if(chosen){selected[count++]=get_member(item,"id");}}
         release_value(&item);
     }
-    int result=7;RV context=find_instance("o_craftingConsumsMenu");
+    int result=automatic&&complete&&count==0?0:7;RV context=find_instance("o_craftingConsumsMenu");
+    if(valid_object(context))result=7;
     // Never mix user-staged ingredients with this request. The original recipe
     // scans the crafting menu's owner ID, not the player's inventory ID.
     if(complete&&count&&!valid_object(context)){
