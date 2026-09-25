@@ -17,7 +17,7 @@ public sealed class HudWindow : Window
     private readonly List<(Button Button,FrameworkElement Icon,TextBlock Label,uint Capability)> cells=[];
     private readonly TextBlock[] values=new TextBlock[4];
     private readonly TextBlock footer=new(){FontSize=10,Foreground=Brushes.Silver,TextTrimming=TextTrimming.CharacterEllipsis};
-    private readonly Button speed,drink,torch,labels,autoVisor,autoForage;
+    private readonly Button speed,drink,torch,labels,autoVisor,autoForage,autoStow;
     private readonly JourneyEstimator estimator=new();
     private readonly TextBlock provisions=new(){FontSize=11,Foreground=Brushes.Wheat,TextTrimming=TextTrimming.CharacterEllipsis};
     private readonly TextBlock equipment=new(){FontSize=11,Foreground=Brushes.Silver,TextTrimming=TextTrimming.CharacterEllipsis};
@@ -89,8 +89,11 @@ public sealed class HudWindow : Window
         var fodderMenu=new ContextMenu();var configure=new MenuItem{Header="选择饲料材料"};configure.Click+=(_,_)=>owner.OpenFodder();fodderMenu.Items.Add(configure);fodder.ContextMenu=fodderMenu;
         AddSupplyMenu(drink,true);AddSupplyMenu(torch,false);
         Add("return-arrow","快速读档","还原最近一次手动备份；先查看目标与确认，不受 latest 快照影响",0,owner.QuickRestore);
+        autoStow=Add("gears","自动收纳","打开 I 和装备的背包后自动收纳战利品",0,owner.ToggleAutoStow);
+        Add("gears","逐点退回","消耗宝石与历练机会退回属性或技能点，再在原版界面重新分配",0,owner.OpenBuildEditor);
+        Add("save-backup","立即存档","保存当前游戏进度；从游戏原版 Load → 自动存档读取",2,owner.SaveNow);
         actions.Children.Clear();
-        foreach(int i in new[]{0,1,2,3,13,4,5,6,7,8,15,9,14,10,11,12})actions.Children.Add(cells[i].Button);
+        foreach(int i in new[]{18,13,16,0,1,2,3,4,5,6,7,8,15,9,14,17,10,11,12})actions.Children.Add(cells[i].Button);
         Grid.SetRow(provisions,3);body.Children.Add(provisions);Grid.SetRow(equipment,4);body.Children.Add(equipment);
         var footerRow=new DockPanel();Grid.SetRow(footerRow,5);body.Children.Add(footerRow);
         var version=new TextBlock{Text=$"v{App.Version}",FontSize=10,Foreground=Muted,Margin=new Thickness(8,0,0,0),VerticalAlignment=VerticalAlignment.Center};
@@ -150,6 +153,9 @@ public sealed class HudWindow : Window
         var grid=HudGeometry.Grid(actions.ActualWidth,actions.ActualHeight,cells.Count);actions.Columns=grid.Columns;actions.Rows=grid.Rows;
         foreach(var cell in cells){cell.Icon.Width=cell.Icon.Height=Math.Clamp(grid.CellHeight-18,12,30);cell.Label.Visibility=grid.CellWidth>=80?Visibility.Visible:Visibility.Collapsed;cell.Label.FontSize=grid.CellWidth<100?11:12;}
         cells.First(c=>c.Button==speed).Icon.Visibility=Visibility.Visible;
+        var forageCell=cells.First(c=>c.Button==autoForage);
+        forageCell.Icon.Visibility=Visibility.Collapsed;forageCell.Label.Visibility=Visibility.Visible;
+        forageCell.Label.Margin=new Thickness(0);forageCell.Label.FontSize=11;
     }
     private void AddSupplyMenu(Button button,bool water)
     {
@@ -186,7 +192,19 @@ public sealed class HudWindow : Window
         torch.ToolTip=$"{(current?$"可用火把 {state!.TorchCount} 个":"等待进入游戏")}\n自动保持点亮：{(coordinator.Preferences.AutoTorch?"开启":"关闭")}，右键切换";
         drink.BorderBrush=coordinator.Preferences.AutoDrink?Active:Muted;torch.BorderBrush=coordinator.Preferences.AutoTorch?Active:Muted;
         autoForage.BorderBrush=coordinator.Preferences.AutoForage?Active:Muted;
-        autoForage.ToolTip=coordinator.Preferences.AutoForage?"自动采集：已开启 · 右键配置":"自动采集：已关闭 · 点击开启";
+        autoForage.Background=coordinator.Preferences.AutoForage?Active:Brushes.Transparent;
+        var forageLabel=cells.First(c=>c.Button==autoForage).Label;
+        forageLabel.Text=coordinator.Preferences.AutoForage?"采集：开":"采集：关";
+        forageLabel.Foreground=coordinator.Preferences.AutoForage?Brushes.Black:Muted;
+        autoForage.ToolTip="自动采集："+(coordinator.Preferences.AutoForage?"已开启，左键关闭":"已关闭，左键开启")+"\n连续采集视野内符合配置的物资，再继续原路线；右键仅配置种类和数量。";
+        AutomationProperties.SetName(autoForage,coordinator.Preferences.AutoForage?"自动采集：开启，点击关闭":"自动采集：关闭，点击开启");
+        var stowCell=cells.First(c=>c.Button==autoStow);
+        stowCell.Icon.Visibility=Visibility.Collapsed;stowCell.Label.Visibility=Visibility.Visible;stowCell.Label.FontSize=11;stowCell.Label.Margin=new Thickness(0);
+        stowCell.Label.Text=coordinator.Preferences.AutoStow?"收纳：开":"收纳：关";
+        autoStow.Background=coordinator.Preferences.AutoStow?Active:Brushes.Transparent;
+        stowCell.Label.Foreground=coordinator.Preferences.AutoStow?Brushes.Black:Muted;
+        autoStow.ToolTip="自动收纳战利品：打开 I 和装备的背包，停手 1.2 秒后整理。小隔袋优先，常用补给保留。\n"+(coordinator.CharacterData.StowStatus switch{1=>"等待打开物品栏",2=>"请打开身上装备的背包",3=>"等待安全且空闲",4=>"正在整理",5=>"本轮整理结束；放不下的保留原处",6=>"转移未确认，已暂停；请检查背包",_=>"已关闭"})+$" · 已收纳 {coordinator.CharacterData.StowCount} 件";
+        AutomationProperties.SetName(autoStow,coordinator.Preferences.AutoStow?"自动收纳：开启，点击关闭":"自动收纳：关闭，点击开启");
         labels.BorderBrush=coordinator.Preferences.ShowLabels?Active:Muted;
         labels.ToolTip=coordinator.Preferences.ShowLabels?(current&&state!.HighlightApplied?"物品与容器常显已开启":"物品与容器常显已记住，等待游戏恢复"):"开启物品与容器常显 · Ctrl+Alt+L";
         cells[7].Label.Visibility=Visibility.Visible;cells[7].Label.Text=$"{coordinator.PreferredSpeed}×";

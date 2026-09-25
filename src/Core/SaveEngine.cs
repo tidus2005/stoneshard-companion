@@ -44,6 +44,20 @@ public sealed class SaveEngine
         catch(IOException e){throw new IOException("另一个存档管理器正在操作，或备份目录无法写入。请等待其完成并检查目录权限。",e);}
         using(manager){return operation==SaveOperation.Restore?Restore(archive??throw new IOException("请选择现有备份。")):Backup(operation==SaveOperation.Latest,operation==SaveOperation.Latest?"Stoneshard-current-state":"Stoneshard-manual").Result;}
     }
+    public RespecResult Respec(RespecPreview preview)
+    {
+        AssertParents(saves);AssertParents(backups);Directory.CreateDirectory(backups);
+        string lockPath=Path.Combine(backups,".manager.lock");AssertOrdinary(lockPath);
+        using var guard=new FileStream(lockPath,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);
+        return PaidRespec.Apply(saves,preview,()=>Backup(false,"Stoneshard-before-respec").Result.Archive);
+    }
+    public BuildEditResult EditBuild(BuildSnapshot snapshot,BuildAllocation draft)
+    {
+        AssertParents(saves);AssertParents(backups);Directory.CreateDirectory(backups);
+        string lockPath=Path.Combine(backups,".manager.lock");AssertOrdinary(lockPath);
+        using var guard=new FileStream(lockPath,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);
+        return BuildEditor.Apply(saves,snapshot,draft,()=>Backup(false,"Stoneshard-before-build-edit").Result.Archive);
+    }
     private static bool Within(string path,string root)=>path.Equals(root,StringComparison.OrdinalIgnoreCase)||path.StartsWith(Path.EndsInDirectorySeparator(root)?root:root+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase);
     private static void AssertOrdinary(string path)
     {

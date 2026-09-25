@@ -5,9 +5,13 @@ typedef struct ForageTarget { double id,failed_x,failed_y; int kind,attempts; bo
 static ForageTarget forage_targets[256];
 static int forage_target_count,forage_cursor[2],forage_kind,forage_active=-1;
 static uint64_t forage_discovery_due;
+static unsigned forage_sweep_ended;
+static void forage_restart_discovery(void){
+    forage_cursor[0]=forage_cursor[1]=0;forage_sweep_ended=0;forage_discovery_due=0;
+}
 static void forage_reset_targets(void){
     memset(forage_targets,0,sizeof(forage_targets));forage_target_count=0;
-    forage_cursor[0]=forage_cursor[1]=forage_kind=0;forage_active=-1;forage_discovery_due=0;
+    forage_kind=0;forage_active=-1;forage_restart_discovery();
 }
 static void forage_discover(uint64_t now){
     if(now<forage_discovery_due)return;forage_discovery_due=now+50;
@@ -15,7 +19,7 @@ static void forage_discover(uint64_t now){
     for(int budget=0;budget<64;budget++){
         int kind=forage_kind;forage_kind=1-forage_kind;
         RV item=indexed_instance(kind?"o_interactive_harvest":"o_abstractGrow",forage_cursor[kind]++);
-        if(!valid_object(item)){release_value(&item);forage_cursor[kind]=0;ended|=1<<kind;if(ended==3)break;continue;}
+        if(!valid_object(item)){release_value(&item);forage_cursor[kind]=0;ended|=1<<kind;forage_sweep_ended|=1u<<kind;if(ended==3)break;continue;}
         double id=member_number(item,"id");int at=-1;
         for(int i=0;i<forage_target_count;i++)if(forage_targets[i].id==id){at=i;break;}
         if(at<0&&isfinite(id)&&forage_selected(item,kind)&&forage_visible(item)){
@@ -27,7 +31,7 @@ static void forage_discover(uint64_t now){
         if(GetTickCount64()-now>=4)break;
     }
 }
-static int forage_nearest(double px,double py,uint64_t now){
+static int forage_nearest_from(double px,double py,double origin_x,double origin_y,uint64_t now){
     int best=-1;double distance=INFINITY;
     for(int i=0;i<forage_target_count;i++){
         ForageTarget* t=forage_targets+i;if(t->done)continue;
@@ -38,11 +42,12 @@ static int forage_nearest(double px,double py,uint64_t now){
         bool available=forage_selected(item,t->kind)&&forage_visible(item);
         double x=member_number(item,"x"),y=member_number(item,"y");release_value(&item);
         if(!available||!isfinite(x)||!isfinite(y))continue;
-        double d=(x-px)*(x-px)+(y-py)*(y-py);
+        double d=(x-origin_x)*(x-origin_x)+(y-origin_y)*(y-origin_y);
         if(d<distance){distance=d;best=i;}
     }
     return best;
 }
+static int forage_nearest(double px,double py,uint64_t now){return forage_nearest_from(px,py,px,py,now);}
 static void forage_defer(double px,double py){
     if(forage_active<0)return;ForageTarget* t=forage_targets+forage_active;
     if(fabs(px-t->failed_x)>=52||fabs(py-t->failed_y)>=52)t->attempts=0;

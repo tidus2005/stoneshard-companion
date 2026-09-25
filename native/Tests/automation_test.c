@@ -84,7 +84,7 @@ int main(void){
  reset();material_key="o_inv_lentil";peel_success=true;forage_configure("F1;13,0,6;14,5,0;");approach();bag_value=1;reconcile_forage(0);check(forage_phase==6&&peels==1&&!crafts,"native peel dispatched once before recipe");reconcile_forage(0);check(forage_phase==4&&peels==1&&seed_count==1,"confirmed source removal and seed growth settle before route resumes");
  reset();material_key="o_inv_lentil";forage_configure("F1;13,0,6;14,5,0;");approach();bag_value=1;reconcile_forage(0);check(shared->walk_state==WALK_BLOCKED&&bag_value==1&&peels==1&&!crafts,"refused peel stops without consuming or retrying the source");
  reset();approach();bag_value=4;reconcile_forage(0);check(forage_phase==4&&!walk_dispatch_pending,"craft cleanup settles before resuming");tick+=550;reconcile_forage(0);check(crafts==1&&closes==1&&forage_count==1&&forage_phase==0&&walk_dispatch_pending&&shared->walk_x==2100&&shared->walk_y==507,"inventory growth crafts once, closes owned menu and resumes exact route");
- reset();approach();tick+=4001;reconcile_forage(0);check(!crafts&&shared->walk_state==WALK_ACTIVE&&walk_dispatch_pending,"failed pickup preserves materials and resumes route with bounded deferred retry");
+ reset();approach();tick+=4001;reconcile_forage(0);check(!crafts&&shared->walk_state==WALK_ACTIVE&&forage_phase==4&&!walk_dispatch_pending,"failed pickup holds the route for a full local rescan");
  reset();approach();tick+=1100;reconcile_forage(0);check(clicks==2&&!crafts,"missed click retries the same nearby visible plant");tick+=1100;reconcile_forage(0);tick+=1100;reconcile_forage(0);check(clicks==3&&!crafts,"pickup retries are bounded to three total clicks");bag_value=2;reconcile_forage(0);check(crafts==1&&forage_count==1,"successful retry crafts once");
  reset();approach();bag_value=4;craft_result=12;reconcile_forage(0);check(menu&&!closes&&shared->walk_state==WALK_BLOCKED,"full output bag preserves original crafting panel and stops");
  for(int reason=0;reason<5;reason++){
@@ -94,7 +94,7 @@ int main(void){
  reset();strcpy(automation_selection,"|o_inv_other|");reconcile_forage(0);check(forage_phase==5,"automatic harvesting does not require a remembered manual selection");
  reset();tx=1001;reconcile_forage(0);check(forage_phase==5,"visible plants beyond eight tiles are approached");tx=533;
  reset();visible=false;reconcile_forage(0);check(!forage_phase&&!queries,"fogged plants are not approached");
- reset();px=403;reachable=false;reconcile_forage(0);tick+=200;reconcile_forage(0);check(!forage_phase&&queries==8&&walk_dispatch_pending,"unreachable plant checks bounded adjacent cells");
+ reset();px=403;reachable=false;reconcile_forage(0);tick+=200;reconcile_forage(0);check(forage_phase==4&&queries==8&&!walk_dispatch_pending,"unreachable plant checks bounded adjacent cells then rescans without route movement");
  reset();shared->walk_state=WALK_MANUAL;reconcile_forage(0);check(!forage_phase&&!clicks&&!crafts,"manual stop never resumes a former route");
  reset();threat=true;reconcile_visor(0);check(visor==0&&visors==1,"threat closes native visor");threat=false;tick+=1000;reconcile_visor(0);check(visor==0,"brief threat disappearance does not open visor");tick+=600;reconcile_visor(0);check(visor==1&&visors==2,"sustained safe state reopens visor");
  reset();threat=true;safe=false;reconcile_visor(0);check(!visors,"visor waits for available native turn");safe=true;reconcile_visor(1);check(!visors,"background never toggles visor");
@@ -119,16 +119,33 @@ int main(void){
  reset();multiple=true;safe=false;
  for(int i=0;i<30&&forage_phase==0;i++){tick+=50;reconcile_forage(0);}
  check(forage_phase==5&&forage_target_count>0,"dense map discovers plants among 800 non-material objects while moving");
- safe=true;
+ safe=true;int premature_resumes=0;
  for(int frames=0;frames<3000&&forage_count<10;frames++){
   tick+=60;
   if(forage_phase==1&&!forage_move_pending){px=forage_x;py=forage_y;}
   if(forage_phase==3){int id=(int)forage_id-100;if(id<0||id>=10||!alive[id])exit(9);alive[id]=false;bag_value=2;}
   reconcile_forage(0);
-  if(!forage_phase&&walk_dispatch_pending)walk_dispatch_pending=false;
+  if(!forage_phase&&walk_dispatch_pending){if(forage_count<10)premature_resumes++;walk_dispatch_pending=false;}
  }
  check(forage_count==10&&crafts==10&&closes==10,"ten visible plants across both object families are all collected and crafted despite shifting instance indexes");
- tick+=600;reconcile_forage(0);
+ check(premature_resumes==0,"nearby harvests chain without redispatching the journey between plants");
+ for(int frames=0;frames<80&&forage_phase;frames++){tick+=60;reconcile_forage(0);}
+ check(!forage_phase&&walk_dispatch_pending,"empty neighbourhood finishes a bounded discovery sweep then resumes journey");
  check(shared->walk_state==WALK_ACTIVE&&shared->walk_x==2100&&shared->walk_y==507,"ten consecutive detours preserve the original journey target");
+ reset();multiple=true;forage_phase=1;forage_move_pending=false;forage_due=tick+15000;
+ forage_path_due=tick+15000;forage_x=1001;forage_y=507;safe=false;
+ for(int frame=0;frame<30;frame++){tick+=50;reconcile_forage(0);}
+ check(forage_target_count==10&&!queries&&!clicks,"detour keeps discovering visible neighbours even while native movement is busy");
+ reset();approach();bag_value=2;reconcile_forage(0);visible=false;tick+=550;reconcile_forage(0);
+ check(!forage_phase&&walk_dispatch_pending&&crafts==1&&clicks==1,"post-harvest scan never clicks outside current native visibility");
+ reset();approach();bag_value=2;reconcile_forage(0);automation_flags=0;tick+=550;reconcile_forage(0);
+ check(shared->walk_state==WALK_MANUAL&&!walk_dispatch_pending&&crafts==1,"turning collection off during chaining cancels without resuming a stale route");
+ reset();multiple=true;forage_discover(tick);forage_targets[0]=(ForageTarget){.id=100};forage_targets[1]=(ForageTarget){.id=101};forage_target_count=2;
+ check(forage_nearest_from(507,507,559,507,tick)==1,"chain selection ranks from the last resource rather than the old journey direction");
+ reset();multiple=true;forage_phase=4;forage_due=tick+6000;forage_scan_due=tick;forage_anchor_x=559;forage_anchor_y=507;
+ forage_targets[0]=(ForageTarget){.id=109,.kind=1};forage_target_count=1;forage_restart_discovery();
+ reconcile_forage(0);check(forage_phase==4&&!walk_dispatch_pending,"partial discovery cannot select an already-cached distant resource");
+ for(int i=0;i<50&&forage_phase==4;i++){tick+=60;reconcile_forage(0);}
+ check(forage_phase==5&&forage_id==101&&!walk_dispatch_pending,"complete stationary scan selects the nearer late-discovered resource");
  puts("Automation state machine checks passed; no game accessed.");
 }

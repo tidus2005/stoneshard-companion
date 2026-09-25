@@ -1,10 +1,13 @@
 @echo off
 setlocal
-set "COMPANION_APP=%~dp0artifacts\development\0.3.24\app\StoneshardCompanion.dll"
+set "COMPANION_APP=%~dp0artifacts\development\0.3.31\app\StoneshardCompanion.dll"
 if not exist "%COMPANION_APP%" set "COMPANION_APP=%~dp0src\Overlay\bin\Release\net8.0-windows\StoneshardCompanion.dll"
 if not exist "%COMPANION_APP%" goto missing_app
 if "%~1"=="--check" goto check_app
-start "" /min /d "%~dp0" "C:\Program Files\dotnet\dotnet.exe" "%COMPANION_APP%"
+set "COMPANION_RUNTIME=%~dp0.tools\dotnet\dotnet.exe"
+if not exist "%COMPANION_RUNTIME%" set "COMPANION_RUNTIME=C:\Program Files\dotnet\dotnet.exe"
+if not exist "%COMPANION_RUNTIME%" set "COMPANION_RUNTIME=dotnet"
+start "" /min /d "%~dp0" "%COMPANION_RUNTIME%" "%COMPANION_APP%"
 if errorlevel 1 goto launch_failed
 exit /b 0
 :check_app

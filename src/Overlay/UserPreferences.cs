@@ -34,6 +34,7 @@ public sealed class UserPreferences
     public bool AutoTorch {get;set;}
     public bool AutoVisor {get;set;}
     public bool AutoForage {get;set;}
+    public bool AutoStow {get;set;}
     public Dictionary<string,ForageRule> ForageRules {get;set;}=ForagePolicy.Normalize(null);
     public Dictionary<string,string> KnownFodderMaterials {get;set;}=[];
     public bool AutoWalkKeys {get;set;}

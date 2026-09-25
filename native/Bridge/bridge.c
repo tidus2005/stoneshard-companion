@@ -26,6 +26,7 @@ static UINT_PTR tick_timer;
 static bool in_callback;
 static unsigned automation_flags;
 static int forage_phase,forage_count;
+static int stow_status,stow_count;
 static char automation_selection[2048];
 static RV numeric(double d){ RV v={0};v.real=d;return v; }
 #include "gm.h"
@@ -43,6 +44,9 @@ static void set_speed(double fps) {
 #include "walk.h"
 #include "automation.h"
 #include "inventory_cleanup.h"
+#include "inventory_stow.h"
+#include "live_save.h"
+#include "build_refund.h"
 static void reconcile_speed(void){
     DWORD pid=0;GetWindowThreadProcessId(GetForegroundWindow(),&pid);
     uint64_t heartbeat=(uint64_t)InterlockedCompareExchange64(&shared->heartbeat,0,0);
@@ -68,8 +72,10 @@ static void reconcile_speed(void){
     shared->highlight_state=highlight_requested?1:0;
     shared->highlight_applied=highlight_applied?1:0;
     if(reasons)walk_held_keys=0;
+    if(!(reasons&8))br_progress_tick();
     reconcile_visor(reasons);
     reconcile_inventory(reasons);
+    reconcile_stow(reasons);
     if(!reconcile_forage(reasons))reconcile_walk(reasons);
 }
 static void publish(int error,const char* message) {
@@ -97,7 +103,7 @@ static void on_command(void) {
     processed_seq=seq; // At most once, including rejected commands.
     InterlockedIncrement(&shared->status_seq);refresh_scene();InterlockedIncrement(&shared->status_seq);
     DWORD foreground_pid=0;GetWindowThreadProcessId(GetForegroundWindow(),&foreground_pid);
-    bool action=(cmd>=CMD_CENTER&&cmd<=CMD_VISOR)||(cmd>=11&&cmd<=13)||(cmd==14&&arg!=0)||cmd==17;
+    bool action=(cmd>=CMD_CENTER&&cmd<=CMD_VISOR)||(cmd>=11&&cmd<=13)||(cmd==14&&arg!=0)||cmd==17||cmd==19||cmd==21;
     if(GetTickCount64()>deadline){publish(3,"Request expired");}
     else if(shared->request_window_generation!=shared->window_generation || (action&&shared->request_scene_generation!=shared->scene_generation))publish(9,"Scene or window changed; action cancelled");
     else if(action&&(!shared->scene_ready||(shared->ui_flags&(cmd==14?~8u:~0u))))publish(7,"Native UI or scene blocks actions");
@@ -112,6 +118,9 @@ static void on_command(void) {
     else if(cmd==CMD_PLAYER){bool ok=restore_camera(true);publish(ok?0:5,ok?"Camera returned to player":"Enter a playable map first");}
     else if(cmd==CMD_VISOR){int result=toggle_visor();publish(result,result==0?"Visor toggled":result==6?"Equipped helmet has no movable visor":"Visor is unavailable in the current state");}
     else if(cmd==8){auto_center=arg==1;scene_ready_since=0;publish(0,auto_center?"Auto center enabled for the next map":"Auto center disabled");}
+    else if(cmd==20){build_read((int)arg);publish(0,"Build snapshot captured");}
+    else if(cmd==21){char payload[128];memcpy(payload,shared->fodder_selection,sizeof(payload)-1);payload[sizeof(payload)-1]=0;const char* error=build_refund(payload);publish(error?(br_mutated?26:25):0,error?error:"已退回 1 点，请在游戏原版界面重新分配");}
+    else if(cmd==19){int result=request_live_save();publish(result,result?"当前不能存档：请停步并等待回合/加载结束":"原版存档请求已提交，等待文件校验");}
     else if(cmd==CMD_REFRESH){publish(0,"Engine connected");}
     else if(cmd==CMD_DIAGNOSTIC){if(!global_scope)init_gm();collect_diagnostic();publish(0,"Diagnostic captured");}
     else if(cmd==10){if(!global_scope)init_gm();inspect_variables(arg);publish(0,"Variable names inspected");}
@@ -123,7 +132,7 @@ static void on_command(void) {
     else if(cmd==14){int result=(!isfinite(arg)||floor(arg)!=arg||arg<0||arg>9)?4:request_walk((int)arg);publish(result,result?"Native walk unavailable":"Native map journey requested");}
     else if(cmd==17){int result=craft_selected_fodder();publish(result,result?"饲料制作已停止：请确认材料、安全状态和背包空间":"已调用原版饲料制作；请核对背包产物");}
     else if(cmd==16){if(arg!=0&&arg!=1)publish(4,"Invalid walk keys state");else{set_walk_keys(arg==1);publish(0,"Walk keys intent synchronized");}}
-    else if(cmd==18){if(!isfinite(arg)||floor(arg)!=arg||arg<0||arg>3)publish(4,"Invalid automation flags");else{if(!forage_configure(shared->fodder_selection)){automation_flags=0;publish(4,"Invalid forage rules; automation disabled");return;}if(forage_phase)forage_stop(WALK_MANUAL);forage_reset_targets();forage_inventory_due=0;automation_flags=(unsigned)arg;memcpy(automation_selection,shared->fodder_selection,sizeof(automation_selection));automation_selection[2047]=0;publish(0,"Automation preferences synchronized");}}
+    else if(cmd==18){if(!isfinite(arg)||floor(arg)!=arg||arg<0||arg>7)publish(4,"Invalid automation flags");else{if(!forage_configure(shared->fodder_selection)){automation_flags=0;publish(4,"Invalid forage rules; automation disabled");return;}if(forage_phase)forage_stop(WALK_MANUAL);forage_reset_targets();forage_inventory_due=0;automation_flags=(unsigned)arg;memcpy(automation_selection,shared->fodder_selection,sizeof(automation_selection));automation_selection[2047]=0;publish(0,"Automation preferences synchronized");}}
     else if(cmd==11){if(arg!=0&&arg!=1)publish(4,"Invalid water mode");else{int result=drink_water(arg==1);publish(result,result?"Water action unavailable or not confirmed":"Water consumed by native action");}}
     else if(cmd==12){if(arg!=0&&arg!=1&&arg!=2&&arg!=18&&arg!=18)publish(4,"Invalid torch mode");else{int mode=(int)arg;int result=toggle_torch(mode&3,(mode&16)!=0);publish(result,result?"Torch action unavailable or not confirmed":"Torch native action confirmed");}}
     else publish(2,"Capability not initialized");
@@ -221,12 +230,12 @@ __declspec(dllexport) DWORD WINAPI BridgeStart(void* ignored) {
     // Startup can expose a window before the frame manager is initialized.
     // Do not publish a mapping until a valid baseline exists; allow a later retry.
     baseline=get_speed();if(!isfinite(baseline)||baseline<1 || baseline>240)return start_failed(15);
-    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v18.%lu",GetCurrentProcessId());
-    mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,NULL,PAGE_READWRITE,0,65536,name);
+    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v22.%lu",GetCurrentProcessId());
+    mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,NULL,PAGE_READWRITE,0,131072,name);
     if(!mapping)return start_failed(12);
     if(GetLastError()==ERROR_ALREADY_EXISTS)return start_failed(13);
-    shared=(SharedState*)MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,65536);if(!shared)return start_failed(14);
-    ZeroMemory(shared,65536);
+    shared=(SharedState*)MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,131072);if(!shared)return start_failed(14);
+    ZeroMemory(shared,131072);
     FILETIME create,exit,kernel,user;GetProcessTimes(GetCurrentProcess(),&create,&exit,&kernel,&user);
     shared->process_start=((uint64_t)create.dwHighDateTime<<32)|create.dwLowDateTime;
     shared->magic=BRIDGE_MAGIC;shared->version=BRIDGE_VERSION;shared->pid=GetCurrentProcessId();

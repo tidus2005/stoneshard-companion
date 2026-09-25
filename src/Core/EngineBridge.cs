@@ -6,7 +6,7 @@ using System.Text;
 
 namespace StoneshardCompanion;
 
-public enum EngineCommand : uint { Refresh=1,Speed=2,Center=3,Player=4,Visor=5,Reset=6,Diagnostic=7,AutoCenter=8,Suspend=9,Inspect=10,Drink=11,Torch=12,Highlight=13,Walk=14,HighlightSet=15,WalkKeysSet=16,Fodder=17,AutomationSet=18 }
+public enum EngineCommand : uint { Refresh=1,Speed=2,Center=3,Player=4,Visor=5,Reset=6,Diagnostic=7,AutoCenter=8,Suspend=9,Inspect=10,Drink=11,Torch=12,Highlight=13,Walk=14,HighlightSet=15,WalkKeysSet=16,Fodder=17,AutomationSet=18,SaveNow=19,BuildRead=20,BuildRefund=21 }
 public sealed record EngineState(int Error,uint Capabilities,double BaseSpeed,double TargetSpeed,double Multiplier,double CameraX,double CameraY,double CameraWidth,double CameraHeight,double MapWidth,double MapHeight,double PlayerX,double PlayerY,int CameraMode,int VisorState,ulong Samples,string Detail,string Diagnostic,bool AutoCenter,
     bool SceneReady,ulong SceneGeneration,ulong WindowGeneration,double PreferredMultiplier,uint SuspendReasons,uint UiFlags,double Hunger,double Thirst,double Pain,double Intoxication,double GuiWidth,double GuiHeight,uint VitalValid,int HighlightState,int TorchState,int WaterUses,long UpdatedAt,bool Ready)
 {
@@ -50,8 +50,8 @@ public sealed class EngineBridge : IDisposable
     public GameSession Session {get;}
     private EngineBridge(GameSession session,MemoryMappedFile map,FileStream ownership)
     {
-        Session=session;mapping=map;lease=ownership;view=map.CreateViewAccessor(0,65536);
-        if(view.ReadUInt32(0)!=Native.Magic || view.ReadUInt32(4)!=18 || view.ReadInt32(8)!=session.Pid || view.ReadInt64(16)!=session.Started){view.Dispose();throw new InvalidDataException("游戏连接校验失败。");}
+        Session=session;mapping=map;lease=ownership;view=map.CreateViewAccessor(0,131072);
+        if(view.ReadUInt32(0)!=Native.Magic || view.ReadUInt32(4)!=22 || view.ReadInt32(8)!=session.Pid || view.ReadInt64(16)!=session.Started){view.Dispose();throw new InvalidDataException("游戏连接校验失败。");}
         sequence=view.ReadInt32(32);
         Heartbeat();heartbeat=new Timer(_=>{try{Heartbeat();}catch(ObjectDisposedException){}},null,200,200);
     }
@@ -64,8 +64,8 @@ public sealed class EngineBridge : IDisposable
         catch(IOException){throw new IOException("另一个控制器正在连接此游戏，请先关闭它。");}
         try{
         await session.ValidateAsync(token);
-        string name=$"Local\\StoneshardCompanion.v18.{session.Pid}";
-        foreach(int version in new[]{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17})try{using var old=MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v{version}.{session.Pid}",MemoryMappedFileRights.Read);throw new NotSupportedException("游戏仍加载旧版助手组件，请在方便时正常退出游戏并重新启动一次。");}catch(FileNotFoundException){}
+        string name=$"Local\\StoneshardCompanion.v22.{session.Pid}";
+        foreach(int version in new[]{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21})try{using var old=MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v{version}.{session.Pid}",MemoryMappedFileRights.Read);throw new NotSupportedException("游戏仍加载旧版助手组件，请在方便时正常退出游戏并重新启动一次。");}catch(FileNotFoundException){}
         MemoryMappedFile? map=null;
         try{map=MemoryMappedFile.OpenExisting(name,MemoryMappedFileRights.ReadWrite);}catch(FileNotFoundException){}
         if(map is null)
@@ -80,6 +80,7 @@ public sealed class EngineBridge : IDisposable
         try{return new EngineBridge(session,map,ownership);}catch{map.Dispose();throw;}
         }catch{ownership.Dispose();throw;}
     }
+    public string ReadBuildResponse(){lock(view){var bytes=new byte[57344];view.ReadArray(63360,bytes,0,bytes.Length);int end=Array.IndexOf(bytes,(byte)0);return Encoding.UTF8.GetString(bytes,0,end<0?bytes.Length:end);}}
     public EngineState ReadState()
     {
         lock(view)
@@ -117,7 +118,7 @@ public sealed class EngineBridge : IDisposable
                 if(view.ReadUInt32(12)!=1)throw new IOException("游戏已断开。");
                 window=(nint)view.ReadUInt64(168);Native.GetWindowThreadProcessId(window,out var pid);
                 if(!Native.IsWindow(window)||pid!=Session.Pid)throw new IOException("游戏窗口正在恢复。");
-                if(command is EngineCommand.Fodder or EngineCommand.AutomationSet){var data=Encoding.UTF8.GetBytes(payload??"");if(data.Length>=2048)throw new ArgumentException("材料选择过多");view.WriteArray(61312,new byte[2048],0,2048);view.WriteArray(61312,data,0,data.Length);}
+                if(command is EngineCommand.Fodder or EngineCommand.AutomationSet or EngineCommand.BuildRefund){var data=Encoding.UTF8.GetBytes(payload??"");if(data.Length>=2048)throw new ArgumentException("材料选择过多");view.WriteArray(61312,new byte[2048],0,2048);view.WriteArray(61312,data,0,data.Length);}
                 view.Write(36,(uint)command);view.Write(40,argument);view.Write(48,Environment.TickCount64+1500);
                 view.Write(3880,view.ReadUInt64(3784));view.Write(3888,view.ReadUInt64(3776));
                 seq=++sequence;Thread.MemoryBarrier();view.Write(32,seq);

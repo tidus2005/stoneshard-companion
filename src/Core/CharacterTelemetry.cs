@@ -10,6 +10,8 @@ public sealed class CharacterTelemetry
     public int AutomationFlags {get;set;}
     public int ForagePhase {get;set;}
     public int ForageCount {get;set;}
+    public int StowStatus {get;set;}
+    public int StowCount {get;set;}
     public long At {get;set;}
     public double? Player {get;set;}
     public StatReading[] Stats {get;set;}=[];

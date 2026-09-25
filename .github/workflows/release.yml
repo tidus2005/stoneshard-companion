@@ -2,7 +2,7 @@ name: Build Windows portable release
 on:
   workflow_dispatch:
   push:
-    branches: [fix/windows-vm-backup]
+    branches: [main]
     paths: [src/Overlay/StoneshardCompanion.csproj]
 permissions:
   contents: write

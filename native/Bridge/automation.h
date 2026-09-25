@@ -8,6 +8,7 @@ static bool forage_move_pending;
 static uint64_t forage_seen_scene,forage_inventory_due;
 static uint64_t forage_path_due;
 static double forage_last_x,forage_last_y;
+static double forage_anchor_x,forage_anchor_y;
 static void reconcile_visor(uint32_t reasons){
     if(!(automation_flags&1)||reasons||(shared->ui_flags&~8u)||!shared->scene_ready)return;
     RV player=find_instance("o_player");if(!valid_object(player)){release_value(&player);return;}
@@ -53,9 +54,14 @@ static void forage_resume(RV player){
     walk_last_x=member_number(player,"x");walk_last_y=member_number(player,"y");
     forage_scan_due=GetTickCount64()+600;telemetry_next=0;
 }
-static void forage_skip(RV player){
+static void forage_wait_nearby(RV player){
     RV flag=numeric(0),stopped=call_script(0x19123a0,player,1,&flag);release_value(&stopped);
-    forage_defer(member_number(player,"x"),member_number(player,"y"));forage_resume(player);
+    walk_dispatch_pending=false;shared->walk_phase=0;
+    forage_restart_discovery();forage_phase=4;
+    forage_due=GetTickCount64()+6000;forage_scan_due=GetTickCount64()+500;telemetry_next=0;
+}
+static void forage_skip(RV player){
+    forage_defer(member_number(player,"x"),member_number(player,"y"));forage_wait_nearby(player);
 }
 static bool forage_approach(RV player){
     RV target=instance_from_id(numeric(forage_id));
@@ -78,6 +84,20 @@ static bool forage_approach(RV player){
     }
     return false;
 }
+// Chained detours must keep the original journey destination, not the last plant.
+static bool forage_select_target(RV player,int next,uint64_t now,bool save_route){
+    RV target=instance_from_id(numeric(forage_targets[next].id));
+    RV asset=get_member(target,forage_targets[next].kind?"berryType":"inv_object");
+    RV name=call_builtin(0x5335220,1,&asset);forage_inventory_key=forage_rule_index(text_value(name));
+    double x=member_number(target,"x"),y=member_number(target,"y");
+    release_value(&name);release_value(&asset);release_value(&target);
+    forage_before=selected_fodder_value();if(!isfinite(forage_before)||!isfinite(x)||!isfinite(y))return false;
+    forage_active=next;forage_id=forage_targets[next].id;forage_anchor_x=x;forage_anchor_y=y;
+    if(save_route){forage_route_x=shared->walk_x;forage_route_y=shared->walk_y;}
+    RV flag=numeric(0),stopped=call_script(0x19123a0,player,1,&flag);release_value(&stopped);
+    walk_dispatch_pending=false;shared->walk_phase=0;forage_scan_due=now+(save_route?180:0);
+    forage_phase=5;forage_due=now+4000;telemetry_next=0;return true;
+}
 static bool reconcile_forage(uint32_t reasons){
     if(forage_seen_scene!=shared->scene_generation){forage_seen_scene=shared->scene_generation;forage_reset_targets();}
     if(shared->walk_state!=WALK_ACTIVE){forage_phase=0;return false;}
@@ -88,6 +108,9 @@ static bool reconcile_forage(uint32_t reasons){
     if(!valid_object(player)||member_number(player,"id")!=walk_player_id||walk_threat(player)){
         release_value(&player);if(forage_phase){forage_stop(WALK_THREAT);return true;}return false;}
     uint64_t now=GetTickCount64();double px=member_number(player,"x"),py=member_number(player,"y");
+    // Discover newly visible neighbours during the detour too, not just after
+    // dispatching the original route. Native visibility remains mandatory.
+    if(forage_phase)forage_discover(now);
     if(forage_phase){
         if(!native_pump_exit_click()){release_value(&player);forage_stop(WALK_MANUAL);return true;}
         if(now>forage_due){
@@ -101,7 +124,15 @@ static bool reconcile_forage(uint32_t reasons){
             release_value(&player);return true;
         }
         if(forage_phase==4){
-            if(now>=forage_scan_due)forage_resume(player);
+            // Finish scanning both object families from this stationary position
+            // before choosing. Picking from a partial batch causes backtracking.
+            if(now>=forage_scan_due&&forage_sweep_ended==3){
+                if(!forage_inventory()){release_value(&player);forage_stop(WALK_BLOCKED);return true;}
+                int next=forage_nearest_from(px,py,forage_anchor_x,forage_anchor_y,now);
+                if(next>=0){
+                    if(!forage_select_target(player,next,now,false))forage_stop(WALK_BLOCKED);
+                }else forage_resume(player);
+            }
             release_value(&player);return true;
         }
         if(forage_phase==1&&forage_move_pending){
@@ -117,7 +148,7 @@ static bool reconcile_forage(uint32_t reasons){
         }
         if(forage_phase==1&&fabs(px-forage_x)<2&&fabs(py-forage_y)<2){
             RV target=instance_from_id(numeric(forage_id));
-            if(!forage_visible(target)){release_value(&target);forage_resume(player);release_value(&player);return true;}
+            if(!forage_visible(target)){release_value(&target);forage_wait_nearby(player);release_value(&player);return true;}
             // Yield overlays first; real input goes through the original pickup
             // / harvest mouse handler, including its range and capacity checks.
             // The camera eases after the final movement frame. Let it settle
@@ -150,8 +181,7 @@ static bool reconcile_forage(uint32_t reasons){
                 RV menu=find_instance("o_craftingConsumsMenu");
                 if(valid_object(menu)){RV args[2]={numeric(7),numeric(25)},out=call_instance_builtin(0x51ebd00,menu,2,args);release_value(&out);}release_value(&menu);
                 if(forage_active>=0)forage_targets[forage_active].done=true;
-                forage_cursor[0]=forage_cursor[1]=0;
-                forage_count++;forage_phase=4;forage_due=now+4000;forage_scan_due=now+500;telemetry_next=0;
+                forage_count++;forage_wait_nearby(player);
             }else forage_stop(WALK_BLOCKED);
         }else if(forage_phase==3&&!exit_mouse_phase&&now>=forage_scan_due&&forage_clicks<3){
             // A late camera frame can turn the first click into an adjacent
@@ -170,6 +200,7 @@ static bool reconcile_forage(uint32_t reasons){
     if(!forage_inventory_complete){release_value(&player);return false;}
     // Process already-carried plants on a safe, settled walking frame too.
     if(forage_rules[13].enabled&&(forage_rules[13].flags&2)&&forage_totals[13]>0){
+        forage_anchor_x=px;forage_anchor_y=py;
         forage_route_x=shared->walk_x;forage_route_y=shared->walk_y;
         RV flag=numeric(0),stopped=call_script(0x19123a0,player,1,&flag);release_value(&stopped);
         walk_dispatch_pending=false;shared->walk_state=0;
@@ -181,16 +212,7 @@ static bool reconcile_forage(uint32_t reasons){
     if(now<forage_scan_due){release_value(&player);return false;}
     int next=forage_nearest(px,py,now);
     if(next>=0){
-        RV target=instance_from_id(numeric(forage_targets[next].id));
-        RV asset=get_member(target,forage_targets[next].kind?"berryType":"inv_object");
-        RV name=call_builtin(0x5335220,1,&asset);forage_inventory_key=forage_rule_index(text_value(name));
-        release_value(&name);release_value(&asset);release_value(&target);
-        forage_before=selected_fodder_value();if(!isfinite(forage_before)){release_value(&player);return false;}
-        forage_active=next;forage_id=forage_targets[next].id;forage_route_x=shared->walk_x;forage_route_y=shared->walk_y;
-        RV flag=numeric(0),stopped=call_script(0x19123a0,player,1,&flag);release_value(&stopped);
-        // Stop even while moving, then resolve the detour on a settled idle frame.
-        walk_dispatch_pending=false;forage_scan_due=now+180;
-        forage_phase=5;forage_due=now+4000;telemetry_next=0;
+        forage_select_target(player,next,now,true);
     }
     release_value(&player);return forage_phase!=0;
 }

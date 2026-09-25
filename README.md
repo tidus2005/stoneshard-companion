@@ -4,13 +4,15 @@
 
 **把走图、变速、补给和存档备份，放进一块可以自由摆放的游戏辅助面板。**
 
-0.3.24 · Windows x64 · 非官方开源工具 · 适配 Steam 原版 **Stoneshard 0.9.4.25 / Build 24780451**
+0.3.31 · Windows x64 · 非官方开源工具 · 适配 Steam 原版 **Stoneshard 0.9.4.25 / Build 24780451**
 
-**[下载 Windows 免安装版 ZIP](https://github.com/tidus2005/stoneshard-companion/releases/download/v0.3.24/StoneshardCompanion-0.3.24-win-x64.zip)** · [全部版本](https://github.com/tidus2005/stoneshard-companion/releases) · [完整使用说明](docs/使用说明.md)
+**[下载 Windows 免安装版 ZIP](https://github.com/tidus2005/stoneshard-companion/releases/download/v0.3.31/StoneshardCompanion-0.3.31-win-x64.zip)** · [全部版本](https://github.com/tidus2005/stoneshard-companion/releases) · [完整使用说明](docs/使用说明.md)
 
 ![晶石助手宽面板：左侧九宫格导航，上方角色状态，右侧补给、物品常显、变速和备份按钮](docs/images/hud-wide-v038.png)
 
 > 图片来自 **0.3.8 实际 WPF 界面组件的离屏预览**，角色数值、备份条目和路径为演示数据；不是游戏运行截图。自动功能在图中开启以展示效果，首次启动默认关闭。[图片生成方式](tools/DocImages/README.md)
+
+**0.3.31 更新**：连续采集优化、首页采集开关、可选背包战利品收纳、立即存档与宝石／契约历练退点。旧助手可在线更新；升级后需重启游戏和助手。[规则与验证范围](docs/releases/v0.3.31.md)。
 
 **0.3.24 更新**：新增快速备份与确认后快速读档、逐项采集保留量、食用蘑菇共享组、鸟巢采集、背包腐烂浆果清理及小扁豆剥取；改进属性变化着色、共享配置与存档操作稳定性。新增游戏行为尚待实机验收。[本版说明与验证范围](docs/releases/v0.3.24.md)。
 
@@ -20,7 +22,7 @@ An open-source Windows companion for Stoneshard with a movable overlay, speed co
 
 ## 三步开始使用
 
-1. 下载上面的 `StoneshardCompanion-0.3.24-win-x64.zip`，**完整解压**到普通文件夹。
+1. 下载上面的 `StoneshardCompanion-0.3.31-win-x64.zip`，**完整解压**到普通文件夹。
 2. 双击 `Start.cmd` 或 `StoneshardCompanion.exe`。随包包含 .NET，存档功能无需安装 PowerShell。
 3. 打开适配版本的游戏，使用窗口或无边框全屏；把面板拖到技能栏旁的空余位置。
 

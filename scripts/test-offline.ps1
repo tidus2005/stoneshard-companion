@@ -1,4 +1,4 @@
-param([string]$OutputRoot)
+﻿param([string]$OutputRoot)
 # No game/UI operations: pure policies, mocked native API, temporary save trees.
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -19,7 +19,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Native walk adapter test build failed.' }
     & artifacts\walk_native_test.exe | Tee-Object -FilePath artifacts\walk-native-offline.log
     if ($LASTEXITCODE -ne 0) { throw 'Native walk adapter tests failed.' }
-    foreach ($case in @('walk_click','fodder','automation','peel','script_call')) {
+    foreach ($case in @('walk_click','fodder','automation','peel','script_call','stow','live_save','refund_graph','refund_material')) {
         & $zigCompiler cc -target x86_64-windows-gnu -O2 "native/Tests/${case}_test.c" -o "artifacts/${case}_test.exe"
         if ($LASTEXITCODE -ne 0) { throw "${case} test build failed" }
         & "./artifacts/${case}_test.exe"
@@ -28,6 +28,10 @@ try {
     $probeDll = if ($OutputRoot) { Join-Path $OutputRoot "probe/StoneshardCompanion.Probe.dll" } else { "src/Probe/bin/Release/net8.0-windows/StoneshardCompanion.Probe.dll" }
     dotnet $probeDll OfflineTest $projectRoot | Tee-Object -FilePath artifacts\offline-v03.log
     if ($LASTEXITCODE -ne 0) { throw 'Managed offline tests failed.' }
+    foreach ($check in @('BuildEditorTest','RespecTest','LiveBuildTest')) {
+        dotnet $probeDll $check
+        if ($LASTEXITCODE -ne 0) { throw "$check failed" }
+    }
     & pwsh -NoLogo -NoProfile -File tests\Test-SaveManager.ps1 | Tee-Object -FilePath artifacts\save-core-v03.log
     if ($LASTEXITCODE -ne 0) { throw 'Save core regression tests failed.' }
 } finally { Pop-Location }

@@ -9,6 +9,8 @@ internal static class OfflineChecks
     private static async Task Fails(Func<Task> action,string expected){try{await action();}catch(Exception e){Check(e.Message.Contains(expected),"refused: "+expected);return;}throw new Exception("Expected refusal: "+expected);}
     public static async Task Run(string root,string? saveRunner=null)
     {
+        await RespecChecks.Run();
+        await LiveSaveChecks.Run();
         IntentChecks.Run();
         CharacterChecks.Run();
         JourneyChecks.Run();

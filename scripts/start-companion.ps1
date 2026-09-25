@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $stage = 'locate application'
 try {
-    $appFile = Join-Path $projectRoot 'artifacts\development\0.3.24\app\StoneshardCompanion.dll'
+    $appFile = Join-Path $projectRoot 'artifacts\development\0.3.31\app\StoneshardCompanion.dll'
     if (-not (Test-Path -LiteralPath $appFile)) {
         $appFile = Join-Path $projectRoot 'src\Overlay\bin\Release\net8.0-windows\StoneshardCompanion.dll'
     }
@@ -16,7 +16,9 @@ try {
     $stderr = Join-Path $logFolder ($launchId + '.stderr.log')
     if ($CheckOnly) { Write-Output ('Launcher check OK: ' + $appFile); exit 0 }
     $stage = 'start application'
-    $appProcess = Start-Process -FilePath (Get-Command dotnet.exe -ErrorAction Stop).Source -ArgumentList ('"' + $appFile + '"') -WorkingDirectory (Split-Path -Parent $appFile) -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+    $runtimePath = Join-Path $projectRoot '.tools\dotnet\dotnet.exe'
+    if (-not (Test-Path -LiteralPath $runtimePath)) { $runtimePath = (Get-Command dotnet.exe -ErrorAction Stop).Source }
+    $appProcess = Start-Process -FilePath $runtimePath -ArgumentList ('"' + $appFile + '"') -WorkingDirectory (Split-Path -Parent $appFile) -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
     # Keep the native handle alive so Windows PowerShell retains the exit code
     # when a duplicate instance acknowledges activation and exits immediately.
     $null = $appProcess.Handle

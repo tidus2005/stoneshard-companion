@@ -124,6 +124,8 @@ static uint32_t blocking_ui(void){
     RV menu=find_instance("o_modificatorsMenu");
     const char* flags[]={"inventoryMenuActive","characterMenuActive","skillMenuActive","tradeMenuActive","stashLeftMenuActive","stashRightMenuActive","journalActive","mapActive","escMenuActive","fullscreenMenuActive","cookingMenuActive","exploreMenuActive","bookActive"};
     uint32_t result=0;
+    const char* loading[]={"o_smoothRoomChanger","o_loading","o_gameLoader","o_save_error_panel"};
+    for(int i=0;i<4;i++){RV obj=find_instance(loading[i]);if(valid_object(obj))result|=32;release_value(&obj);}
     for(int i=0;i<13;i++)if(member_number(menu,flags[i])==1)result|=i<2?1:32;
     if(valid_object(find_instance("o_dialogue")))result|=2;
     if(any_visible_gui("o_confirm_panel"))result|=4;

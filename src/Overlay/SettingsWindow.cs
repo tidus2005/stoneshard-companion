@@ -17,6 +17,7 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(new TextBlock{Text=$"行旅辅助 · v{App.Version}",FontSize=24,Margin=new Thickness(0,0,0,12)});
         status=new TextBlock{Text=owner.Status,TextWrapping=TextWrapping.Wrap,Foreground=Brushes.LightGray};panel.Children.Add(status);
         AddText("配置目录："+UserPreferences.Folder);
+        Button("逐点退回 · 宝石与契约历练",owner.OpenBuildEditor);
         AddText("浮窗外观（即时生效）",16);
         Adjust("行旅辅助背景不透明度",0,100,owner.Preferences.HudOpacity*100,v=>owner.Preferences.HudOpacity=v/100,"%");
         Check("行旅辅助显示边框",()=>owner.Preferences.HudBorder,v=>owner.Preferences.HudBorder=v);
@@ -43,6 +44,15 @@ public sealed class SettingsWindow : Window
         Check("左侧显示半透明角色属性面板",()=>owner.Preferences.ShowStats,v=>owner.Preferences.ShowStats=v);
         AddText("属性面板可拖动标题移动；全部／特别关注切换，悬停点星标保存关注。悬停数值查看原生基础值和来源；不可确认的来源不会伪造。打开游戏原生面板时自动避让。");
         Button("马车饲料：选择材料／一键制作",owner.OpenFodder);
+        AddText("随时存档",16);
+        Button("立即存档（原版 Load 读取）",owner.SaveNow);
+        AddText("不需要睡觉。停步并等待回合结算完成后，保存当前进度到原版自动存档；读档仍在游戏 Load 界面选择。保存前后保留备份，显示成功前会校验文件。自动存档槽位按游戏规则轮换。");
+        AddText("属性与技能",16);
+        Button("逐点退回 · 宝石与契约历练",owner.OpenBuildEditor);
+        AddText("游戏运行时点击减号，确认并付费退回一点。依照技能树前置关系退点，之后在游戏原版界面重新分配。");
+        AddText("战利品收纳",16);
+        Check("自动收纳战利品到已装备背包",()=>owner.Preferences.AutoStow,v=>owner.Preferences.AutoStow=v);
+        AddText("打开 I 物品栏及身上装备的背包后，停手约 1.2 秒开始整理。贵重战利品优先，小隔袋优先尝试，原版规则决定是否能放；食品、水、药品、医疗用品、任务物品及未识别物品保留在主物品栏。空间不足时留在原处，手动操作、移动或遇敌时暂停。背包的开启仍由你操作，保留原版回合消耗。");
         AddText("自动补给",16);
         Check("自动喝水",()=>owner.Preferences.AutoDrink,v=>owner.Preferences.AutoDrink=v);
         var threshold=new TextBlock{Text=$"口渴达到 {owner.Preferences.DrinkThreshold:0}% 时喝水",Margin=new Thickness(0,12,0,8)};panel.Children.Add(threshold);
