@@ -52,16 +52,29 @@ static bool native_exit_target(int direction,double x,double y,double* tx,double
     return fabs(*tx-x)<=52.5&&fabs(*ty-y)<=52.5;
 }
 static bool native_center_reachable(RV player,double x,double y){center_queries++;return (x-1183)*(x-1183)+(y-1183)*(y-1183)>=center_min_distance;}
-static void native_activate_exit(RV player){exit_calls++;}
+static double click_x,click_y; static void native_cancel_exit_click(void){} static bool native_pump_exit_click(void){return true;}
+static bool click_ok=true; static bool native_click_exit(RV player,int direction){if(!click_ok)return false;int d=direction>=11?direction-10:direction;click_x=px+(d==3?-26:d==4?26:0);click_y=py+(d==1?-26:d==2?26:0);exit_calls++;return true;}
 #include "../Bridge/highlight.h"
 #include "../Bridge/walk.h"
 static void check(bool ok,const char* name){if(!ok){fprintf(stderr,"FAIL %s\n",name);exit(1);}printf("PASS %s\n",name);passed++;}
-static void reset(void){memset(shared,0,sizeof(*shared));shared->ready=shared->scene_ready=1;shared->scene_generation=2;shared->window_generation=1;shared->map_w=shared->map_h=2340;shared->player_x=px=500;shared->player_y=py=500;idle=valid=can_act=true;enemy=damage=injury=false;player_id=100;path=-1;move_calls=stop_calls=0;test_now=10000;walk_dispatch_pending=test_modifiers_down=false;exit_exists=true;exit_inset=center_min_distance=0;exit_calls=center_queries=0;}
-static int begin(int d){int result=start_walk(d);test_now+=200;reconcile_walk(0);return result;}
+static void reset(void){memset(shared,0,sizeof(*shared));shared->ready=shared->scene_ready=1;shared->scene_generation=2;shared->window_generation=1;shared->map_w=shared->map_h=2340;shared->player_x=px=500;shared->player_y=py=500;idle=valid=can_act=true;enemy=damage=injury=false;player_id=100;path=-1;move_calls=stop_calls=0;test_now=10000;walk_dispatch_pending=test_modifiers_down=false;click_ok=true;exit_exists=true;exit_inset=center_min_distance=0;exit_calls=center_queries=0;}
+static int begin(int d){int result=start_walk(d);test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);return result;}
 int main(void){
+    double mx,my;
+    for(int d=1;d<=4;d++){
+        check(exit_click_point(d,507,767,27,497,960,540,1920,1080,&mx,&my)&&mx==(d==3?908:d==4?1012:960)&&my==(d==1?468:d==2?592:540),"adjacent cell projects correctly in all four directions at 2x scale");
+        check(exit_click_point(d+10,507,767,27,497,960,540,1280,720,&mx,&my),"keyboard projection supports fractional VM scaling");
+    }
+    check(!exit_click_point(1,0,0,0,0,960,540,1920,1080,&mx,&my),"offscreen adjacent cell is never clicked");
+    check(exit_click_point(1,507,767,27,497,960,540,1024,768,&mx,&my)&&fabs(mx-512)<.01,"letterboxed viewport preserves center and cell direction");
+    check(!exit_click_point(1,NAN,767,27,497,960,540,1920,1080,&mx,&my)&&!exit_click_point(5,507,767,27,497,960,540,1920,1080,&mx,&my),"invalid click geometry is rejected");
+    reset();click_ok=false;shared->player_x=px=507;shared->player_y=py=13;begin(11);
+    check(shared->walk_state==WALK_BLOCKED&&exit_calls==0,"rejected mouse injection ends route without retries");
     original_label_renderer=fake_draw;
     RV out={0},input=numeric(0),second=numeric(9);RV* args[]={&input,&second};
     reconcile_highlight(true);query_labels_at(0x3992a2f,NULL,NULL,&out,2,args);check(out.real==1&&input.real==0&&second.real==9,"label override preserves caller arguments");
+    query_labels_at(0x4c1f806,NULL,NULL,&out,2,args);check(out.real==1,"container nameplate creation follows auto display");
+    query_labels_at(0x49d4703,NULL,NULL,&out,2,args);check(out.real==1,"container nameplate persists without held Alt");
     idle=false;query_labels_at(0x3992a2f,NULL,NULL,&out,2,args);check(out.real==1,"labels remain enabled while moving");
     query_labels_at(0x49cc96e,NULL,NULL,&out,2,args);check(out.real==1,"label retention stays enabled between steps");
     query_labels_at(0x1805180,NULL,NULL,&out,2,args);check(out.real==0,"movement query remains native while labels enabled");
@@ -85,7 +98,7 @@ int main(void){
     idle=true;px=shared->walk_x;py=shared->walk_y;reconcile_walk(0);check(shared->walk_state==WALK_ACTIVE&&walk_dispatch_pending&&shared->walk_phase==1&&move_calls==1,"inner edge queues exit rather than ending or immediately clicking");
     reset();begin(2);test_now+=800;reconcile_walk(0);check(shared->walk_state==WALK_BLOCKED&&move_calls==1,"unreachable or native interrupted route reports stop without retries");
     reset();begin(3);finish_walk(WALK_MANUAL,true);check(shared->walk_state==WALK_MANUAL&&stop_calls==1,"manual input stops old path before native input handling");
-    path=77;idle=false;test_now+=200;reconcile_walk(0);check(path==77&&stop_calls==1,"timer never cancels the player's replacement route");
+    path=77;idle=false;test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);check(path==77&&stop_calls==1,"timer never cancels the player's replacement route");
     reset();begin(4);begin(0);check(shared->walk_state==WALK_MANUAL&&stop_calls==1,"explicit stop calls original stop script once");
     reset();begin(1);enemy=true;reconcile_walk(0);check(shared->walk_state==WALK_THREAT&&stop_calls==1,"new enemy stops active native path");
     reset();begin(1);shared->ui_flags=8;reconcile_walk(0);check(shared->walk_state==WALK_ACTIVE,"hover does not cancel a route");
@@ -94,33 +107,33 @@ int main(void){
     reset();begin(1);reconcile_walk(8);check(shared->walk_state==WALK_BACKGROUND&&stop_calls==1,"lost controller lease stops route");
     reset();begin(1);idle=false;test_now+=8100;reconcile_walk(0);check(shared->walk_state==WALK_TIMEOUT&&stop_calls==1,"no progress timeout stops route");
     for(int d=1;d<=4;d++){
-        reset();begin(d);idle=true;px=sent_x;py=sent_y;reconcile_walk(0);test_now+=200;reconcile_walk(0);
+        reset();begin(d);idle=true;px=sent_x;py=sent_y;reconcile_walk(0);test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);
         double ex=d==3?13:d==4?2327:1183,ey=d==1?13:d==2?2327:1183;
-        check(move_calls==2&&shared->walk_phase==1&&sent_x==ex&&sent_y==ey,"each direction dispatches exactly one outer tile click after inner arrival");
+        check(move_calls==1&&exit_calls==1&&shared->walk_phase==1&&click_x==ex&&click_y==ey,"each direction dispatches exactly one outer tile click after inner arrival");
         shared->scene_ready=0;reconcile_walk(0);shared->scene_ready=1;shared->scene_generation++;test_now+=1000;reconcile_walk(0);
-        check(shared->walk_state==WALK_SCENE&&move_calls==2&&stop_calls==0,"loading then next map ends journey without crossing another map");
+        check(shared->walk_state==WALK_SCENE&&move_calls==1&&exit_calls==1&&stop_calls==0,"loading then next map ends journey without crossing another map");
     }
     reset();begin(5);check(sent_x==1183&&sent_y==1183,"center direction requests original path to map center");
     px=sent_x;py=sent_y;idle=true;reconcile_walk(0);test_now+=5000;reconcile_walk(0);
     check(shared->walk_state==WALK_ARRIVED&&move_calls==1&&shared->walk_phase==0,"center arrival never requests an exit click");
-    reset();shared->player_x=px=1183;shared->player_y=py=39;begin(1);check(move_calls==1&&sent_y==13&&shared->walk_phase==1,"starting at inner edge proceeds directly to exit once");
+    reset();shared->player_x=px=1183;shared->player_y=py=39;begin(1);check(move_calls==0&&exit_calls==1&&click_y==13&&shared->walk_phase==1,"starting at inner edge proceeds directly to exit once");
     reset();shared->player_x=shared->player_y=1183;begin(5);check(shared->walk_state==WALK_ARRIVED&&move_calls==0,"already centered needs no movement");
     for(int cause=0;cause<6;cause++){
         reset();begin(1);px=sent_x;py=sent_y;reconcile_walk(0);
         if(cause==0)enemy=true;if(cause==1)damage=true;if(cause==2)injury=true;if(cause==3)shared->ui_flags=2;
         if(cause==4)finish_walk(WALK_MANUAL,true);if(cause==5)can_act=false;
-        test_now+=200;reconcile_walk(0);test_now+=5000;enemy=damage=injury=false;reconcile_walk(0);
+        test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);test_now+=5000;enemy=damage=injury=false;reconcile_walk(0);
         check(shared->walk_state!=WALK_ACTIVE&&move_calls==1,"threat UI manual input or unsafe state before crossing cancels exit without retry");
     }
     reset();begin(1);px=sent_x;py=sent_y;reconcile_walk(0);test_modifiers_down=true;test_now+=300;reconcile_walk(0);
     check(move_calls==1,"exit click also waits for physical modifiers to release");
-    test_modifiers_down=false;reconcile_walk(0);enemy=true;idle=false;reconcile_walk(0);
-    check(shared->walk_state==WALK_THREAT&&stop_calls==1&&move_calls==2,"enemy during final exit step stops native route without attack calls");
-    reset();begin(1);px=sent_x;py=sent_y;reconcile_walk(0);test_now+=200;reconcile_walk(0);px=sent_x;py=sent_y;reconcile_walk(0);test_now+=2100;reconcile_walk(0);
-    check(shared->walk_state==WALK_BLOCKED&&move_calls==2,"outer tile without native transition reports blocked without repeated clicks");
+    test_modifiers_down=false;test_now+=350;reconcile_walk(0);enemy=true;idle=false;reconcile_walk(0);
+    check(shared->walk_state==WALK_THREAT&&stop_calls==1&&move_calls==1&&exit_calls==1,"enemy during final exit step stops native route without attack calls");
+    reset();begin(1);px=sent_x;py=sent_y;reconcile_walk(0);test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);px=sent_x;py=sent_y;reconcile_walk(0);test_now+=2100;reconcile_walk(0);
+    check(shared->walk_state==WALK_BLOCKED&&move_calls==1&&exit_calls==1,"outer tile without native transition reports blocked without repeated clicks");
     reset();begin(1);px=sent_x;py=sent_y;reconcile_walk(0);reconcile_walk(1);
     check(shared->walk_state==WALK_BACKGROUND&&move_calls==1,"background between phases cancels crossing");
-    reset();begin(1);px=sent_x;py=sent_y;reconcile_walk(0);player_id++;test_now+=200;reconcile_walk(0);
+    reset();begin(1);px=sent_x;py=sent_y;reconcile_walk(0);player_id++;test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);
     check(shared->walk_state==WALK_SCENE&&move_calls==1&&stop_calls==0,"changed character never receives pending exit click");
     for(int d=6;d<=9;d++){
         reset();begin(d);
@@ -132,15 +145,16 @@ int main(void){
         reset();shared->player_x=px=507;shared->player_y=py=767;begin(d);
         double ex=d==13?39:d==14?2301:507,ey=d==11?39:d==12?2301:767;
         check(move_calls==1&&sent_x==ex&&sent_y==ey,"relative arrow route preserves character row or column");
-        px=sent_x;py=sent_y;reconcile_walk(0);test_now+=5000;reconcile_walk(0);
-        check(shared->walk_state==WALK_ARRIVED&&move_calls==1,"relative arrival does not cross map or restart");
+        px=sent_x;py=sent_y;reconcile_walk(0);test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);
+        check(shared->walk_state==WALK_ACTIVE&&move_calls==1&&exit_calls==1&&click_x==(d==13?13:d==14?2327:507)&&click_y==(d==11?13:d==12?2327:767),"relative arrival automatically preserves row or column through exit");
+        px=sent_x;py=sent_y;reconcile_walk(0);reconcile_walk(0);check(exit_calls==1,"outward adjacent click dispatched once");
     }
     reset();shared->map_w=2600;shared->map_h=1560;begin(9);
     check(sent_x==2561&&sent_y==1521,"rectangular maps use independent dimensions");
     reset();shared->player_x=NAN;check(start_walk(11)==4&&move_calls==0,"unknown character coordinate refuses relative route");
     reset();shared->player_x=13;check(start_walk(11)==4&&move_calls==0,"relative origin on transition column fails closed");
     reset();shared->player_x=px=507;shared->player_y=py=39;begin(11);
-    check(shared->walk_state==WALK_ACTIVE&&shared->walk_phase==1&&move_calls==1&&sent_x==507&&sent_y==13,"fresh relative request at boundary clicks exit");
+    check(shared->walk_state==WALK_ACTIVE&&shared->walk_phase==1&&move_calls==0&&exit_calls==1&&click_x==507&&click_y==13,"fresh relative request at boundary clicks exit");
     reset();check(!handle_walk_key(VK_UP,false,false,true,true)&&move_calls==0,"disabled arrow mode delegates native key");
     for(int cause=0;cause<7;cause++){
         reset();set_walk_keys(true);
@@ -155,7 +169,7 @@ int main(void){
     for(int i=0;i<4;i++){
         reset();set_walk_keys(true);shared->player_x=px=507;shared->player_y=py=767;
         check(handle_walk_key(keys[i],false,false,true,true)&&shared->walk_direction==i+11&&move_calls==0,"each game arrow queues correct relative direction");
-        test_now+=200;reconcile_walk(0);
+        test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);
         for(int j=0;j<20;j++)handle_walk_key(keys[i],true,false,true,true);
         check(move_calls==1&&stop_calls==0&&shared->walk_state==WALK_ACTIVE,"held arrow cannot issue repeated paths or cancel active route");
         handle_walk_key(keys[i],false,false,true,true);
@@ -176,34 +190,36 @@ int main(void){
     reset();set_walk_keys(true);begin(6);set_walk_keys(false);
     check(shared->walk_state==WALK_ACTIVE&&stop_calls==0,"disabling keyboard mode does not cancel independent grid route");
     reset();set_walk_keys(true);begin(11);shared->scene_generation++;reconcile_walk(0);
-    handle_walk_key(VK_UP,true,false,true,true);test_now+=300;reconcile_walk(0);
+    handle_walk_key(VK_UP,true,false,true,true);test_now+=149;reconcile_walk(0);
     check(shared->walk_keys_enabled&&shared->walk_state==WALK_SCENE&&move_calls==1&&stop_calls==0,"map change retains mode but held key never restarts in new scene");
     reset();set_walk_keys(true);begin(11);idle=false;enemy=true;reconcile_walk(0);
     check(shared->walk_state==WALK_THREAT&&stop_calls==1&&move_calls==1,"relative journey stops when a new enemy appears");
     for(int d=1;d<=4;d++)for(int relative=0;relative<2;relative++){
         reset();set_walk_keys(true);
         shared->player_x=px=d==3?39:d==4?2301:507;shared->player_y=py=d==1?39:d==2?2301:767;
-        int direction=d+(relative?10:0);request_walk(direction);test_now+=200;reconcile_walk(0);
-        check(move_calls==1&&shared->walk_phase==1&&sent_x==(d==3?13:d==4?2327:507)&&sent_y==(d==1?13:d==2?2327:767),"fresh edge request clicks current exit without routing to border midpoint");
+        int direction=d+(relative?10:0);request_walk(direction);test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);
+        check(move_calls==0&&exit_calls==1&&shared->walk_phase==1&&click_x==(d==3?13:d==4?2327:507)&&click_y==(d==1?13:d==2?2327:767),"fresh edge request clicks current exit without routing to border midpoint");
         for(int i=0;i<5;i++)handle_walk_key(keys[d-1],true,false,true,true);
-        check(move_calls==1&&shared->walk_state==WALK_ACTIVE,"held key does not repeat or cancel exit click");
+        check(move_calls==0&&exit_calls==1&&shared->walk_state==WALK_ACTIVE,"held key does not repeat or cancel exit click");
         shared->scene_generation++;reconcile_walk(0);handle_walk_key(keys[d-1],true,false,true,true);test_now+=300;reconcile_walk(0);
-        check(move_calls==1&&stop_calls==0&&shared->walk_state==WALK_SCENE,"exit journey ends after exactly one transition");
+        check(move_calls==0&&exit_calls==1&&stop_calls==0&&shared->walk_state==WALK_SCENE,"exit journey ends after exactly one transition");
     }
     for(int d=1;d<=4;d++){
         reset();set_walk_keys(true);shared->player_x=px=507;shared->player_y=py=767;
         begin(d+10);shared->player_x=px=sent_x;shared->player_y=py=sent_y;
         // Key arrives before the next supervisor timer has recorded arrival.
-        handle_walk_key(keys[d-1],false,false,true,true);test_now+=200;reconcile_walk(0);
-        check(move_calls==2&&stop_calls==0&&shared->walk_phase==1,"second press at arrival dispatches exit even before timer acknowledgement");
+        handle_walk_key(keys[d-1],false,false,true,true);test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);
+        check(move_calls==1&&exit_calls==1&&stop_calls==0&&shared->walk_phase==1,"second press at arrival dispatches exit even before timer acknowledgement");
     }
     reset();set_walk_keys(true);begin(11);shared->player_x=px=sent_x;shared->player_y=py=sent_y;reconcile_walk(0);
-    check(shared->walk_state==WALK_ARRIVED&&move_calls==1,"initial relative journey still stops at edge");
-    handle_walk_key(VK_UP,true,false,true,true);test_now+=300;reconcile_walk(0);
-    check(move_calls==1&&shared->walk_state==WALK_ARRIVED,"arrival with key still held never exits automatically");
-    handle_walk_key(VK_UP,false,false,true,true);test_now+=200;reconcile_walk(0);
-    check(move_calls==2&&shared->walk_phase==1&&sent_y==13,"new physical press after recorded arrival clicks exit");
-    reset();request_walk(1);request_walk(2);test_now+=200;reconcile_walk(0);
+    check(shared->walk_state==WALK_ACTIVE&&walk_dispatch_pending&&move_calls==1,"relative arrival queues automatic exit");
+    handle_walk_key(VK_UP,true,false,true,true);test_now+=149;reconcile_walk(0);
+    check(exit_calls==0&&walk_dispatch_pending,"exit waits for overlay polling to clear target");
+    test_now+=1;reconcile_walk(0);
+    check(move_calls==1&&exit_calls==1&&shared->walk_state==WALK_ACTIVE,"held key does not block automatic exit");
+    test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);
+    check(move_calls==1&&exit_calls==1&&shared->walk_phase==1&&click_y==13,"automatic exit requires no second physical press");
+    reset();request_walk(1);request_walk(2);test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);
     check(shared->walk_state==WALK_MANUAL&&move_calls==0,"grid second click cancels pending route instead of replacing it");
     reset();begin(1);request_walk(2);
     check(shared->walk_state==WALK_MANUAL&&stop_calls==1,"grid second click still stops active movement");
@@ -211,11 +227,11 @@ int main(void){
         reset();set_walk_keys(true);shared->player_x=px=507;shared->player_y=py=39;
         handle_walk_key(VK_UP,false,false,true,true);
         if(cause==0)enemy=true;if(cause==1)damage=true;if(cause==2)shared->ui_flags=1;if(cause==3)shared->scene_generation++;
-        test_now+=200;reconcile_walk(0);
+        test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);
         check(move_calls==0&&shared->walk_state!=WALK_ACTIVE,"threat panel or scene change before exit dispatch cancels it");
     }
-    reset();set_walk_keys(true);shared->player_x=px=507;shared->player_y=py=39;begin(11);px=sent_x;py=sent_y;reconcile_walk(0);test_now+=2100;reconcile_walk(0);
-    check(shared->walk_state==WALK_BLOCKED&&move_calls==1,"exit without native transition reports blocked and never retries");
+    reset();set_walk_keys(true);shared->player_x=px=507;shared->player_y=py=39;begin(11);reconcile_walk(0);test_now+=2100;reconcile_walk(0);
+    check(shared->walk_state==WALK_BLOCKED&&move_calls==0&&exit_calls==1,"exit without native transition reports blocked and never retries");
     reset();shared->player_x=px=507;shared->player_y=py=65;begin(11);
     check(shared->walk_phase==0&&sent_y==39,"two tiles away still approaches edge rather than clicking exit");
     reset();shared->player_x=px=507;shared->player_y=py=13;begin(11);
@@ -223,22 +239,35 @@ int main(void){
     reset();shared->player_x=px=507;shared->player_y=py=39;begin(12);
     check(shared->walk_phase==0&&sent_y==2301,"opposite direction from border travels inward normally");
     reset();exit_inset=1;shared->player_x=px=507;shared->player_y=py=39;set_walk_keys(true);
-    handle_walk_key(VK_UP,false,false,true,true);test_now+=200;reconcile_walk(0);
+    handle_walk_key(VK_UP,false,false,true,true);test_now+=(shared->walk_phase==1?650:200);reconcile_walk(0);
     check(exit_calls==1&&move_calls==0&&shared->walk_y==39,"exit on inner row uses real transition instead of assumed outer row");
     test_now+=2100;reconcile_walk(0);reconcile_walk(0);
     check(exit_calls==1&&shared->walk_state==WALK_BLOCKED,"native transition with no scene change never repeats activation");
     reset();exit_exists=false;shared->player_x=px=507;shared->player_y=py=39;begin(11);
-    check(move_calls==0&&exit_calls==0&&shared->walk_state==WALK_BLOCKED,"missing real exit does not click arbitrary border ground");
+    check(move_calls==0&&exit_calls==1&&shared->walk_state==WALK_ACTIVE,"verified geometric border clicks once even without transition marker metadata");
     reset();center_min_distance=1;begin(5);
     check(move_calls==1&&center_queries==2&&((sent_x-1183)*(sent_x-1183)+(sent_y-1183)*(sent_y-1183))==676,"occupied center chooses closest reachable neighbor before moving");
     reset();center_min_distance=5*676;begin(5);
     check(move_calls==0&&center_queries==8&&walk_dispatch_pending,"large blocked center is scanned in bounded batches without moving");
     for(int i=0;i<40&&walk_dispatch_pending;i++){test_now+=100;reconcile_walk(0);}
-    check(move_calls==1&&((sent_x-1183)*(sent_x-1183)+(sent_y-1183)*(sent_y-1183))==5*676,"center fallback is sorted by distance, not scan order");
+    check(move_calls==1&&((sent_x-1183)*(sent_x-1183)+(sent_y-1183)*(sent_y-1183))==5*676&&sent_x==1209&&sent_y==1131,"center fallback follows clockwise rings");
     reset();center_min_distance=INFINITY;begin(5);enemy=true;test_now+=100;reconcile_walk(0);
     check(move_calls==0&&center_queries==8&&shared->walk_state==WALK_THREAT,"enemy during center search cancels without a path or attack");
     reset();center_min_distance=INFINITY;begin(5);
-    for(int i=0;i<40&&walk_dispatch_pending;i++){test_now+=100;reconcile_walk(0);}
-    check(move_calls==0&&center_queries==289&&shared->walk_state==WALK_BLOCKED,"fully blocked center neighborhood stops after bounded search");
+    for(int i=0;i<310&&walk_dispatch_pending;i++){test_now+=100;reconcile_walk(0);}
+    check(move_calls==0&&shared->walk_state==WALK_TIMEOUT,"fully blocked center scan times out without native movement");
+    for(int first=0;first<4;first++)for(int second=0;second<4;second++){
+        if((first<2)==(second<2))continue;
+        reset();set_walk_keys(true);shared->player_x=px=507;shared->player_y=py=767;
+        handle_walk_key(keys[first],false,false,true,true);test_now+=30;
+        handle_walk_key(keys[second],false,false,true,true);
+        int vertical=first<2?first:second,horizontal=first>=2?first:second;
+        check(shared->walk_direction==16+vertical*2+(horizontal-2),"orthogonal held keys select all four diagonals in either order");
+        test_now+=200;reconcile_walk(0);
+        check(move_calls==1&&fabs(sent_x-507)==fabs(sent_y-767),"diagonal preserves equal displacement from current cell");
+        release_walk_key(keys[first]);release_walk_key(keys[second]);
+        check(walk_held_keys==0,"key up clears chord state");
+    }
+    for(int i=1;i<9;i++){WalkCandidate c=center_candidate(i);check(abs(c.dx)<=1&&abs(c.dy)<=1&&(c.dx||c.dy),"first clockwise ring contains adjacent cells only");}
     printf("%d native interaction checks passed. No game accessed.\n",passed);return 0;
 }

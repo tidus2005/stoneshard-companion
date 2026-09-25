@@ -9,7 +9,14 @@ internal static class OfflineChecks
     private static async Task Fails(Func<Task> action,string expected){try{await action();}catch(Exception e){Check(e.Message.Contains(expected),"refused: "+expected);return;}throw new Exception("Expected refusal: "+expected);}
     public static async Task Run(string root,string? saveRunner=null)
     {
+        await RespecChecks.Run();
+        await LiveSaveChecks.Run();
         IntentChecks.Run();
+        CharacterChecks.Run();
+        JourneyChecks.Run();
+        PreviewChecks.Run();
+        await SavePathChecks.Run(null,null);
+        await UpdateChecks.Run();
         int cycle=1;
         for(int i=0;i<30;i++){cycle=SpeedControl.Next(cycle);Check(cycle==((i+1)%3)+1,"HUD speed cycles 1, 2, 3 without a fourth step");}
         Check(SpeedControl.Next(4)==1&&SpeedControl.Next(0)==1,"legacy or invalid HUD speed returns to normal");
@@ -28,8 +35,8 @@ internal static class OfflineChecks
         Check(double.IsFinite(fallback.X)&&fallback.Width>=HudGeometry.MinWidth&&fallback.Height<=720,"invalid stored geometry sanitized");
         var wide=HudGeometry.Grid(900,120,12);var tall=HudGeometry.Grid(220,600,12);
         Check(wide.Columns>tall.Columns&&wide.Rows<tall.Rows,"wide and tall layouts reflow");
-        foreach(var (w,h) in new[]{(HudGeometry.MinWidth,HudGeometry.MinHeight),(650d,216d),(356d,700d),(1600d,200d)}){
-            double availableWidth=w-20-HudGeometry.NavigationSize-HudGeometry.NavigationGap,availableHeight=h-20-22-26-18;
+        foreach(var (w,h) in new[]{(HudGeometry.MinWidth,HudGeometry.MinHeight),(650d,260d),(356d,700d),(1600d,HudGeometry.MinHeight)}){
+            double availableWidth=w-20-HudGeometry.NavigationSize-HudGeometry.NavigationGap,availableHeight=h-20-HudGeometry.HeaderHeight-26-54;
             var g=HudGeometry.Grid(availableWidth,availableHeight,12);
             Check(g.Columns*g.Rows>=12&&g.CellWidth>=26&&g.CellHeight>=26&&availableHeight>=HudGeometry.NavigationSize,$"fixed left compass and 12 actions fit {w}x{h}");
         }
@@ -41,7 +48,7 @@ internal static class OfflineChecks
         Check(!HudPolicy.CanWalk(false,false,false,false,0)&&!HudPolicy.CanWalk(true,true,false,true,0),"no game and main menu disable walking while HUD stays visible");
         Check(!HudPolicy.CanWalk(true,true,true,false,0)&&!HudPolicy.CanWalk(true,false,true,true,0),"background and stale states cannot trigger journey");
         Check(HudPolicy.CanWalk(true,true,true,true,8)&&!HudPolicy.CanWalk(true,true,true,true,2),"hover allows journey, native dialogs block it");
-        var packet=new byte[3968];
+        var packet=new byte[EngineBridge.SnapshotSize];
         BitConverter.GetBytes(1).CopyTo(packet,12);BitConverter.GetBytes(1).CopyTo(packet,3772);
         BitConverter.GetBytes(Environment.TickCount64).CopyTo(packet,3872);
         BitConverter.GetBytes(64u).CopyTo(packet,68);BitConverter.GetBytes(1u).CopyTo(packet,3916);

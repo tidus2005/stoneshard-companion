@@ -3,6 +3,14 @@ using System.Text.Json;
 
 Console.OutputEncoding=new System.Text.UTF8Encoding(false);
 try{
+    if(args.Length>0&&args[0]=="LiveBuildTest"){LiveBuildChecks.Run();return;}
+    if(args.Length>0&&args[0]=="BuildEditorTest"){await BuildEditorChecks.Run();return;}
+    if(args.Length>1&&args[0]=="BuildPreview"){Console.WriteLine(JsonSerializer.Serialize(BuildEditor.Read(args[1]),new JsonSerializerOptions{WriteIndented=true}));return;}
+    if(args.Length>0&&args[0]=="RespecTest"){await RespecChecks.Run();return;}
+    if(args.Length>1&&args[0]=="RespecPreview"){Console.WriteLine(JsonSerializer.Serialize(PaidRespec.Preview(args[1]),new JsonSerializerOptions{WriteIndented=true}));return;}
+    if(args.Length>0&&args[0]=="CharacterTest"){CharacterChecks.Run();return;}
+    if(args.Length>0&&args[0]=="UpdateTest"){await UpdateChecks.Run();return;}
+    if(args.Length>0&&args[0]=="SavePathTest"){await SavePathChecks.Run(args.Length>1?args[1]:null,args.Length>2?args[2]:null,args.Length>3?args[3]:null);return;}
     if(args.Length>0&&args[0]=="--save-worker"){Environment.ExitCode=SaveWorker.Run(args);return;}
     if(args.Length>0&&args[0]=="OfflineTest"){await OfflineChecks.Run(Path.GetFullPath(args.Length>1?args[1]:"."),args.Length>2?Path.GetFullPath(args[2]):null);return;}
     if(args.Length>0&&args[0]=="SelfTest"){IntentChecks.Run();return;}
@@ -27,8 +35,8 @@ try{
         return;
     }
     if(args.Length>1&&args[1]=="Status"){
-        using var map=System.IO.MemoryMappedFiles.MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v8.{session.Pid}",System.IO.MemoryMappedFiles.MemoryMappedFileRights.Read);
-        using var view=map.CreateViewAccessor(0,4096,System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read);
+        using var map=System.IO.MemoryMappedFiles.MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v22.{session.Pid}",System.IO.MemoryMappedFiles.MemoryMappedFileRights.Read);
+        using var view=map.CreateViewAccessor(0,131072,System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read);
         Console.WriteLine(JsonSerializer.Serialize(new{sceneReady=view.ReadInt32(3772),ready=view.ReadInt32(12),preferred=view.ReadDouble(3792),suspend=view.ReadUInt32(3800),uiFlags=view.ReadUInt32(3804),updated=view.ReadInt64(3872),now=Environment.TickCount64,foreground=session.IsForeground,target=view.ReadDouble(80),cameraMode=view.ReadInt32(160),visor=view.ReadInt32(164),samples=view.ReadUInt64(176),autoCenter=view.ReadInt32(3768)==1,cameraX=view.ReadDouble(96),cameraY=view.ReadDouble(104),cameraWidth=view.ReadDouble(112),cameraHeight=view.ReadDouble(120),mapWidth=view.ReadDouble(128),mapHeight=view.ReadDouble(136),playerX=view.ReadDouble(144),playerY=view.ReadDouble(152)},new JsonSerializerOptions{WriteIndented=true}));return;
     }
     if(args.Length>2&&args[1]=="Desktop"){
@@ -40,6 +48,27 @@ try{
     var library=Path.GetFullPath(args.Length>3?args[3]:"artifacts/native/StoneshardBridge.dll");
     if(args.Length>1&&args[1]=="Verify"){await Verification.Run(session,library,args.Length>4?args[4]:"artifacts/verification-v031.json");return;}
     using var bridge=await EngineBridge.ConnectAsync(session,library);
+    if(args.Length>1&&args[1]=="InspectItems"){
+        for(int i=0;i<256;i++){
+            var item=await bridge.SendAsync(EngineCommand.Inspect,3000+i);
+            if(string.IsNullOrWhiteSpace(item.Diagnostic))break;
+            if(item.Diagnostic.Contains("grill_stick")||item.Diagnostic.Contains("blueberry")||item.Diagnostic.Contains("horsetail")){
+                Console.WriteLine($"ITEM {i}: {item.Diagnostic}");
+                var attributes=await bridge.SendAsync(EngineCommand.Inspect,3512+i);Console.WriteLine("ATTRIBUTES: "+attributes.Diagnostic);
+            }
+        }
+        return;
+    }
+    if(args.Length>1&&args[1]=="InspectMap"){
+        var output=new System.Text.StringBuilder();
+        for(int page=0;page<72;page++){
+            var snapshot=await bridge.SendAsync(EngineCommand.Inspect,1000+page);
+            if(string.IsNullOrWhiteSpace(snapshot.Diagnostic))break;
+            output.AppendLine(snapshot.Diagnostic);
+        }
+        Directory.CreateDirectory("artifacts");File.WriteAllText("artifacts/live-character-map.txt",output.ToString());
+        Console.WriteLine("Saved artifacts/live-character-map.txt");return;
+    }
     if(args.Length>1&&args[1]=="InspectAll"){
         var output=new System.Text.StringBuilder();
         foreach(bool globals in new[]{false,true})for(int page=0;page<240;page++){
@@ -51,6 +80,9 @@ try{
         Directory.CreateDirectory("artifacts");File.WriteAllText("artifacts/live-variables.txt",output.ToString());
         Console.WriteLine("Saved artifacts/live-variables.txt");return;
     }
+    if(args.Length>1&&args[1]=="BuildRead"){await bridge.SendAsync(EngineCommand.BuildRead,args.Length>2?int.Parse(args[2]):0);Console.WriteLine(bridge.ReadBuildResponse());return;}
+    if(args.Length>2&&args[1]=="BuildRefund"){var result=await bridge.SendAsync(EngineCommand.BuildRefund,payload:args[2]);Console.WriteLine(JsonSerializer.Serialize(new{result.Error,result.Detail}));return;}
+    if(args.Length>2&&args[1]=="VerifiedSave"){var before=LiveSave.Capture(args[2]);var accepted=await bridge.SendAsync(EngineCommand.SaveNow);if(accepted.Error!=0)throw new IOException(accepted.Detail);Console.WriteLine(JsonSerializer.Serialize(await LiveSave.WaitAsync(args[2],before)));return;}
     var cmd=args.Length>1?Enum.Parse<EngineCommand>(args[1],true):EngineCommand.Refresh;
     double arg=args.Length>2?double.Parse(args[2],System.Globalization.CultureInfo.InvariantCulture):0;
     var state=await bridge.SendAsync(cmd,arg);

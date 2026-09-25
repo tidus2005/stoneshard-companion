@@ -9,10 +9,10 @@ static RV call_builtin(uintptr_t offset,int count,RV* args){RV r={.kind=5};((Bui
 static double number(RV r){switch(r.kind&0xffffff){case 0:case 13:return r.real;case 7:return (int32_t)r.integer;case 10:return (double)r.integer;case 15:return (int32_t)r.integer;default:return NAN;}}
 static const char* text_value(RV r){return (r.kind&0xffffff)==1 && r.ptr ? *(const char**)r.ptr : "";}
 typedef struct CachedString {const char* name;RV value;} CachedString;
-static CachedString string_cache[256];static size_t string_count;
+static CachedString string_cache[512];static size_t string_count;
 static RV string_value(const char* s){
     for(size_t i=0;i<string_count;i++)if(!strcmp(string_cache[i].name,s))return string_cache[i].value;
-    if(string_count>=256)return (RV){.kind=5};
+    if(string_count>=512)return (RV){.kind=5};
     CachedString* c=&string_cache[string_count++];c->name=s;c->value=(RV){.kind=5};
     ((void(*)(RV*,const char*))(game+0x51b2890))(&c->value,s);return c->value;
 }
@@ -35,12 +35,7 @@ static bool set_member(RV obj,const char* name,RV value){
     if(!has_member(obj,name))return false;
     RV args[3]={obj,string_value(name),value};call_builtin(0x51ee370,3,args);return true;
 }
-static RV call_script(uintptr_t address,RV self,int count,RV* values){
-    RV out={.kind=5};RV* args[4]={0};
-    if((self.kind&0xffffff)!=6||!self.ptr||count>4)return out;
-    for(int i=0;i<count;i++)args[i]=values+i;
-    ((GameScript)(game+address))(self.ptr,self.ptr,&out,count,args);return out;
-}
+#include "script_call.h"
 static RV call_instance_builtin(uintptr_t address,RV self,int count,RV* values){
     RV out={.kind=5};
     if((self.kind&0xffffff)==6&&self.ptr)((Builtin)(game+address))(&out,self.ptr,self.ptr,count,values);
@@ -55,8 +50,8 @@ static bool auto_center;
 static double observed_camera_id=-1;
 static uint64_t scene_ready_since;
 static uint64_t playable_since;
-static RV visor_helmet(void){RV slot=find_instance("o_inv_head");if(!valid_object(slot))return (RV){.kind=5};RV child=get_member(slot,"children");RV result=instance_from_id(child);release_value(&child);return result;}
-static int visor_state(void){RV helmet=visor_helmet();if(!valid_object(helmet)||!has_member(helmet,"visorSwitch"))return -1;double n=member_number(helmet,"isOpen");return n==1?1:n==0?0:-1;}
+static RV visor_helmet(void){RV slot=find_instance("o_inv_head");RV child=get_member(slot,"children"),result=instance_from_id(child);release_value(&child);release_value(&slot);return result;}
+static int visor_state(void){RV helmet=visor_helmet();double n=valid_object(helmet)&&has_member(helmet,"visorSwitch")?member_number(helmet,"isOpen"):NAN;release_value(&helmet);return n==1?1:n==0?0:-1;}
 static bool scene_objects(RV* player,RV* camera){*player=find_instance("o_player");*camera=find_instance("oCamera");return valid_object(*player)&&valid_object(*camera)&&has_member(*camera,"freeCamera");}
 static void update_view(RV camera){
     double w=global_number("cameraWidth"),h=global_number("cameraHeight");
@@ -87,14 +82,15 @@ static bool center_camera(void){
     update_view(camera);return true;
 }
 static int toggle_visor(void){
-    RV player,camera;if(!scene_objects(&player,&camera))return 5;
+    RV player,camera;bool ready=scene_objects(&player,&camera);release_value(&player);release_value(&camera);if(!ready)return 5;
     RV button=find_instance("o_visor_toggle"),helmet=visor_helmet();
-    if(!valid_object(button)||!valid_object(helmet)||!has_member(helmet,"visorSwitch"))return 6;
-    double previous=member_number(helmet,"isOpen");if(previous!=0&&previous!=1)return 6;
+    double previous=member_number(helmet,"isOpen");int result=6;
     // Same guarded user event as the native visor button. No item attributes are fabricated.
-    ((ObjectEvent)(game+0x32d4520))(button.ptr,button.ptr);
-    bool changed=member_number(helmet,"isOpen")!=previous;
-    return changed?0:7;
+    if(valid_object(button)&&valid_object(helmet)&&has_member(helmet,"visorSwitch")&&(previous==0||previous==1)){
+        ((ObjectEvent)(game+0x32d4520))(button.ptr,button.ptr);
+        result=member_number(helmet,"isOpen")!=previous?0:7;
+    }
+    release_value(&button);release_value(&helmet);return result;
 }
 static bool any_visible_gui(const char* parent){
     RV name=string_value(parent),asset=call_builtin(0x5336680,1,&name);
@@ -128,6 +124,8 @@ static uint32_t blocking_ui(void){
     RV menu=find_instance("o_modificatorsMenu");
     const char* flags[]={"inventoryMenuActive","characterMenuActive","skillMenuActive","tradeMenuActive","stashLeftMenuActive","stashRightMenuActive","journalActive","mapActive","escMenuActive","fullscreenMenuActive","cookingMenuActive","exploreMenuActive","bookActive"};
     uint32_t result=0;
+    const char* loading[]={"o_smoothRoomChanger","o_loading","o_gameLoader","o_save_error_panel"};
+    for(int i=0;i<4;i++){RV obj=find_instance(loading[i]);if(valid_object(obj))result|=32;release_value(&obj);}
     for(int i=0;i<13;i++)if(member_number(menu,flags[i])==1)result|=i<2?1:32;
     if(valid_object(find_instance("o_dialogue")))result|=2;
     if(any_visible_gui("o_confirm_panel"))result|=4;
@@ -140,6 +138,7 @@ static uint32_t blocking_ui(void){
     return result;
 }
 #include "supplies.h"
+#include "telemetry.h"
 static void refresh_scene(void){
     if(!global_scope)init_gm();
     RV player,camera;bool play=scene_objects(&player,&camera);
@@ -165,15 +164,19 @@ static void refresh_scene(void){
     shared->auto_center=auto_center?1:0;
     shared->scene_ready=play&&playable_since&&GetTickCount64()-playable_since>=600;
     refresh_supplies(play,player);
+    refresh_telemetry(play,player);
 }
 // Read-only development diagnostic. Enumerate variable names through the runner,
 // never infer a field from a numerical offset or keep dynamic string pointers.
 static void diagnostic_value(char*,size_t,const char*,RV);
 static void inspect_variables(double page){
-    if(page>=1000&&page<2000){
-        RV map=get_global("characterDataMap");char* out=shared->diagnostic;out[0]=0;
+    if((page>=1000&&page<2000)||(page>=3000&&page<5000)){
+        RV map=get_global("characterDataMap");int map_page=(int)page-1000;
+        if(page>=3000){release_value(&map);map_page=0;int n=(int)page-3000;
+            if(n==999)map=get_global("timeDataMap");else if(n>=1000&&n<1100){map=get_global("consum_stat_data");if(n>1000){RV key=string_value("grill_stick"),args[2]={map,key},row=call_builtin(0x51e4510,2,args);release_value(&map);map=row;}}else{RV args[2]={numeric(4770),numeric(n%256)},id=call_builtin(0x51f2980,2,args),item=instance_from_id(id);map=get_member(item,n<256?"data":n<512?"attributes_value_map":"attributes_data");release_value(&id);release_value(&item);}}
+        char* out=shared->diagnostic;out[0]=0;
         if(!isfinite(number(map)))return;
-        RV key=call_builtin(0x51e3ff0,1,&map);int first=((int)page-1000)*28;
+        RV key=call_builtin(0x51e3ff0,1,&map);int first=map_page*28;
         for(int i=0;i<2000&&(key.kind&0xffffff)!=5;i++){
             RV args[2]={map,key};
             if(i>=first&&i<first+28){RV value=call_builtin(0x51e4510,2,args);diagnostic_value(out,sizeof(shared->diagnostic),text_value(key),value);release_value(&value);}
@@ -184,6 +187,7 @@ static void inspect_variables(double page){
     }
     bool globals=page<0;int first=(int)(globals?-page-1:page)*28;
     RV obj=globals?(RV){.ptr=global_scope,.kind=6}:find_instance("o_player");
+    if(page>=2000&&page<2300){const char* objects[]={"o_inventory","o_craftingConsumsMenu","o_inv_consum"};int p=(int)page-2000;release_value(&obj);obj=find_instance(objects[p/100]);first=(p%100)*28;}
     if(page>=10000){int encoded=(int)page-10000;RV args[2]={numeric(encoded/100),numeric(0)};obj=instance_from_id(call_builtin(0x51f2980,2,args));first=(encoded%100)*28;}
     char* out=shared->diagnostic;out[0]=0;if(!valid_object(obj))return;
     RV names=call_builtin(0x51ee150,1,&obj);

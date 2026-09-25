@@ -5,7 +5,7 @@ static GameScript original_label_renderer;
 static bool highlight_allowed(bool requested,uint32_t reasons,uint32_t ui_flags){
     return requested&&!(reasons&(1|2|8))&&!(ui_flags&(2|4|16|32));
 }
-static bool label_query_site(uintptr_t caller){return caller==0x3992a2f||caller==0x49cc96e;}
+static bool label_query_site(uintptr_t caller){return caller==0x3992a2f||caller==0x49cc96e||caller==0x4c1f806||caller==0x49d4703;}
 static RV* query_labels_at(uintptr_t caller,void* self,void* other,RV* out,int count,RV** args){
     RV* result=original_label_renderer(self,other,out,count,args);
     if(label_query_site(caller)){
@@ -30,8 +30,8 @@ static bool install_label_renderer(void){
     const BYTE expected[]={0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x56,0x57,0x53,0x48,0x81,0xec,0x68,0x01,0,0};
     BYTE* entry=game+0x13515c0;
     if(memcmp(entry,expected,sizeof(expected)))return false;
-    const uintptr_t sites[]={0x3992a2a,0x49cc969};
-    for(int i=0;i<2;i++){BYTE* call=game+sites[i];int32_t relative;memcpy(&relative,call+1,4);if(call[0]!=0xe8||call+5+relative!=entry)return false;}
+    const uintptr_t sites[]={0x3992a2a,0x49cc969,0x4c1f801,0x49d46fe};
+    for(size_t i=0;i<sizeof(sites)/sizeof(*sites);i++){BYTE* call=game+sites[i];int32_t relative;memcpy(&relative,call+1,4);if(call[0]!=0xe8||call+5+relative!=entry)return false;}
     BYTE* trampoline=VirtualAlloc(NULL,64,MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
     if(!trampoline)return false;
     memcpy(trampoline,expected,sizeof(expected));

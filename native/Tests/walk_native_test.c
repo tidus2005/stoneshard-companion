@@ -6,7 +6,7 @@
 #include <math.h>
 #include <string.h>
 typedef struct RV {double real;int kind;} RV;
-static struct {double map_w,map_h;} storage={2340,2340},*shared=&storage;
+static struct {double map_w,map_h;char detail[512];} storage={2340,2340},*shared=&storage;
 static struct {double gx,gy,dx,dy;} tiles[8];
 static int count,queries,activations,checks;
 static double px=507,py=39,query_result=1,occupant=-4;
@@ -33,7 +33,7 @@ static double member_number(RV r,const char* key){
     if(!strcmp(key,"dX"))return tiles[i].dx;if(!strcmp(key,"dY"))return tiles[i].dy;return NAN;
 }
 static RV call_script(uintptr_t address,RV self,int n,RV* args){
-    if(address==0x17206a0&&self.real==0&&n==4&&args[0].real==px&&args[1].real==py&&args[2].real==1183&&args[3].real==1183){queries++;return numeric(query_result);}
+    if(address==0x17206a0&&self.real==0&&n==4&&args[0].real==floor(px/26)&&args[1].real==floor(py/26)&&args[2].real==45&&args[3].real==45){queries++;return numeric(query_result);}
     if(address==0x19b1e50&&self.real==0&&n==0&&args==NULL){activations++;return (RV){0,5};}
     exit(3);
 }
@@ -57,7 +57,7 @@ int main(void){
     check(!native_exit_target(11,507,767,&x,&y),"distant transition cannot be activated from the map interior");
     check(!native_exit_target(11,NAN,39,&x,&y),"nonfinite character position fails closed");
     count=0;check(!native_exit_target(11,px,py,&x,&y),"missing transition instance is a failure, not arbitrary ground");
-    RV player={0,6};check(native_center_reachable(player,1183,1183)&&queries==1,"path query passes pixel origin and candidate with native default snapping");
+    RV player={0,6};check(native_center_reachable(player,1183,1183)&&queries==1,"path query passes grid cells; native script multiplies by 26 and adds 13");
     query_result=0;check(!native_center_reachable(player,1183,1183),"blocked path is rejected before movement");
     query_result=NAN;check(!native_center_reachable(player,1183,1183),"invalid path query result fails closed");
     query_result=1;occupant=123;int before=queries;

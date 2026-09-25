@@ -8,7 +8,8 @@ public enum HudCorner { Move,TopLeft,TopRight,BottomLeft,BottomRight }
 public static class HudGeometry
 {
     public const double NavigationSize=108,NavigationGap=8;
-    public const double MinWidth=356,MinHeight=200,DefaultWidth=650,DefaultHeight=216;
+    public const double HeaderHeight=30;
+    public const double MinWidth=356,MinHeight=244,DefaultWidth=650,DefaultHeight=260;
     public static HudRect Clamp(HudRect value,double viewportWidth,double viewportHeight)
     {
         double vw=Math.Max(1,Finite(viewportWidth,1920)),vh=Math.Max(1,Finite(viewportHeight,1080));

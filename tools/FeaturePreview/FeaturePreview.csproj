@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms><ImplicitUsings>disable</ImplicitUsings><Nullable>enable</Nullable><EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition><AssemblyName>StoneshardCompanion</AssemblyName><StartupObject>StoneshardCompanion.FeaturePreview</StartupObject></PropertyGroup>
+<ItemGroup><ProjectReference Include="../../src/Core/StoneshardCompanion.Core.csproj"/></ItemGroup>
+<ItemGroup>
+<Compile Include="../../src/Overlay/Usings.cs" Link="Usings.cs"/>
+<Compile Include="../../src/Overlay/SaveWindow.cs" Link="SaveWindow.cs"/>
+<Compile Include="../../src/Overlay/StatsWindow.cs" Link="StatsWindow.cs"/>
+<Compile Include="../../src/Overlay/FodderWindow.cs" Link="FodderWindow.cs"/>
+<Compile Include="../../src/Overlay/UserPreferences.cs" Link="UserPreferences.cs"/>
+<Page Include="../../src/Overlay/PanelTheme.xaml" Link="PanelTheme.xaml"/>
+</ItemGroup>
+</Project>

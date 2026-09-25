@@ -1,4 +1,4 @@
-param([switch]$Publish)
+param([switch]$Publish,[string]$OutputRoot)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Push-Location -LiteralPath $projectRoot
@@ -8,6 +8,21 @@ try {
         $zigCommand = Get-Command zig -ErrorAction SilentlyContinue
         if (-not $zigCommand) { throw 'Zig 0.13.0 is required. Place it in .tools or add zig to PATH.' }
         $zigCompiler = $zigCommand.Source
+    }
+    if ($OutputRoot) {
+        if ($Publish) { throw 'Use OutputRoot for isolated development builds, without Publish.' }
+        $devRoot = [IO.Path]::GetFullPath($OutputRoot, $projectRoot)
+        $nativeOutput = Join-Path $devRoot 'native'
+        New-Item -ItemType Directory -Force -Path $nativeOutput | Out-Null
+        $bridgeOutput = Join-Path $nativeOutput 'StoneshardBridge.dll'
+        & $zigCompiler cc -target x86_64-windows-gnu -shared -O2 native\Bridge\bridge.c -o $bridgeOutput -luser32 -lkernel32
+        if ($LASTEXITCODE -ne 0) { throw 'Native bridge build failed.' }
+        foreach ($entry in @(@('src/Probe/StoneshardCompanion.Probe.csproj','probe'),@('src/Overlay/StoneshardCompanion.csproj','app'))) {
+            dotnet build $entry[0] -c Release --nologo --artifacts-path (Join-Path $devRoot 'build') -o (Join-Path $devRoot $entry[1]) "-p:BridgeLibrary=$bridgeOutput"
+            if ($LASTEXITCODE -ne 0) { throw "Build failed: $($entry[0])" }
+        }
+        Write-Host "Development app ready: $devRoot\app\StoneshardCompanion.exe"
+        return
     }
     New-Item -ItemType Directory -Force -Path 'artifacts\native' | Out-Null
     & $zigCompiler cc -target x86_64-windows-gnu -shared -O2 native\Bridge\bridge.c -o artifacts\native\StoneshardBridge.dll -luser32 -lkernel32

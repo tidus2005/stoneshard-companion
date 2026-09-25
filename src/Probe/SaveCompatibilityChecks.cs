@@ -130,7 +130,7 @@ internal static class SaveCompatibilityChecks
     private static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFile(string name,uint access,uint sharing,nint security,uint disposition,uint flags,nint template);
     [System.Runtime.InteropServices.DllImport("kernel32.dll",SetLastError=true)]
     private static extern bool DeviceIoControl(Microsoft.Win32.SafeHandles.SafeFileHandle handle,uint control,byte[] input,int inputBytes,nint output,int outputBytes,out uint returned,nint overlapped);
-    private static void CreateJunction(string path,string target)
+    internal static void CreateJunction(string path,string target)
     {
         // Junction creation needs no symlink privilege; fixture paths stay under
         // the checked test root and links are removed non-recursively first.

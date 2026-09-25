@@ -10,21 +10,32 @@ public static class SavePaths
     public static string ResolveDirectoryRoot(string path)
     {
         path=Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
-        string root=Path.GetPathRoot(path)!;
-        string current=root;
-        foreach(string part in path[root.Length..].Split(Path.DirectorySeparatorChar,StringSplitOptions.RemoveEmptyEntries)){
-            current=Path.Combine(current,part);
-            FileAttributes attributes;
-            try{attributes=File.GetAttributes(current);}
-            catch(FileNotFoundException){continue;}catch(DirectoryNotFoundException){continue;}
-            if((attributes&FileAttributes.Directory)==0)throw new IOException("目录路径被文件占用："+current);
-            if((attributes&FileAttributes.ReparsePoint)!=0&&IsNameSurrogateTag(ReadTag(current))){
-                var resolved=Directory.ResolveLinkTarget(current,true);
-                if(resolved is null)throw new IOException("无法解析重定向目录，请在存档管理中选择 Windows 本地备份目录："+current);
-                current=Path.GetFullPath(resolved.FullName);
+        // Resolve one hop at a time. Final-target resolution on a Parallels
+        // drive can return "UNC\\psf\\Home" as a relative local path instead
+        // of preserving the network root returned by the link itself.
+        for(int hops=0;hops<=40;hops++){
+            string root=Path.GetPathRoot(path)!;
+            string current=root;
+            string[] parts=path[root.Length..].Split(Path.DirectorySeparatorChar,StringSplitOptions.RemoveEmptyEntries);
+            bool redirected=false;
+            for(int i=0;i<parts.Length;i++){
+                string part=parts[i];
+                current=Path.Combine(current,part);
+                FileAttributes attributes;
+                try{attributes=File.GetAttributes(current);}
+                catch(FileNotFoundException){continue;}catch(DirectoryNotFoundException){continue;}
+                if((attributes&FileAttributes.Directory)==0)throw new IOException("目录路径被文件占用："+current);
+                if((attributes&FileAttributes.ReparsePoint)!=0&&IsNameSurrogateTag(ReadTag(current))){
+                    if(hops==40)throw new IOException("目录链接层级过多或存在循环："+path);
+                    var resolved=Directory.ResolveLinkTarget(current,false);
+                    if(resolved is null)throw new IOException("无法解析重定向目录，请在存档管理中选择 Windows 本地备份目录："+current);
+                    path=Path.GetFullPath(Path.Combine(new[]{resolved.FullName}.Concat(parts.Skip(i+1)).ToArray()));
+                    redirected=true;break;
+                }
             }
+            if(!redirected)return Path.TrimEndingDirectorySeparator(current);
         }
-        return Path.TrimEndingDirectorySeparator(current);
+        throw new IOException("无法解析目录："+path);
     }
     // Microsoft documents bit 29 as name substitution. Cloud/virtual-storage
     // tags without that bit are not symlinks and can be read through their driver.
