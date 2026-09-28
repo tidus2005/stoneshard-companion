@@ -1,6 +1,6 @@
 @echo off
 setlocal
-set "COMPANION_APP=%~dp0artifacts\development\0.3.31\app\StoneshardCompanion.dll"
+set "COMPANION_APP=%~dp0artifacts\development\0.3.35\app\StoneshardCompanion.dll"
 if not exist "%COMPANION_APP%" set "COMPANION_APP=%~dp0src\Overlay\bin\Release\net8.0-windows\StoneshardCompanion.dll"
 if not exist "%COMPANION_APP%" goto missing_app
 if "%~1"=="--check" goto check_app

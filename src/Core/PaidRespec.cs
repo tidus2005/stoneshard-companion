@@ -61,7 +61,7 @@ public static class PaidRespec
         if(Text(game["wipeVersion"])!="0.9"||Text(game["compiler"])!="YYC"||Flag(game["prologue"]))throw new IOException("暂不支持这个存档版本或序章角色。");
         string name=Text(c["nameKey"]);if(!Bases.TryGetValue(name,out var baseline))throw new IOException("尚未核实该角色的初始属性，暂不支持洗点："+name);
         int level=Integer(c["LVL"],"LVL"),ap=Integer(c["AP"],"AP"),sp=Integer(c["SP"],"SP"),refundAP=0;
-        if(level is <1 or >30)throw new IOException("角色等级超出已支持范围。");
+        if(level is <1 or >1_000_000)throw new IOException("角色等级超出已支持范围。");
         for(int i=0;i<Attributes.Length;i++){int current=Integer(c[Attributes[i]],Attributes[i]);if(current<baseline[i]||current>30)throw new IOException("属性超出角色正常范围，停止洗点。");refundAP+=current-baseline[i];c[Attributes[i]]=baseline[i];}
         var skills=Object(data["skillsDataMap"],"skillsDataMap");var all=Array(skills["skillsAllDataList"],"skillsAllDataList");
         if(all.Count==0||all.Count%5!=0)throw new IOException("技能记录格式不受支持。");

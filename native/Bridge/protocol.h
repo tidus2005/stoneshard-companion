@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 #define BRIDGE_MAGIC 0x53484331u
-#define BRIDGE_VERSION 22u
+#define BRIDGE_VERSION 25u
 #define BRIDGE_MESSAGE (WM_APP + 0x437)
 #define CMD_REFRESH 1
 #define CMD_SPEED 2
@@ -77,7 +77,11 @@ typedef struct SharedState {
     char telemetry[57344]; // 3968: bounded UTF-8 JSON, same seqlock as state
     char fodder_selection[2048]; // 61312: request payload, same command seqlock
     char build_response[57344]; // 63360: response to explicit build queries only
+    char combat_response[8192]; // 120704: read-only hover snapshot
+    uint32_t combat_enabled; // 128896
 } SharedState;
+_Static_assert(offsetof(SharedState,combat_response)==120704,"combat response ABI");
+_Static_assert(offsetof(SharedState,combat_enabled)==128896,"combat enabled ABI");
 
 _Static_assert(sizeof(SharedState) <= 131072, "mapping bounds");
 _Static_assert(offsetof(SharedState,build_response)==63360,"build response ABI");

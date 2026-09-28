@@ -39,6 +39,12 @@ internal static class RespecChecks
         Write();byte[] bad=File.ReadAllBytes(path);var decoded=PaidRespec.Decode(bad,Salt);Fails(()=>PaidRespec.Decode(bad,"wrong salt"),"salted checksum validated");
         preview=PaidRespec.Preview(root);Fails(()=>PaidRespec.Apply(root,preview,()=>throw new IOException("backup unavailable")),"backup failure aborts before debit");Check(bad.SequenceEqual(File.ReadAllBytes(path)),"backup failure leaves original bytes intact");
         var exact=Fixture();exact["inventoryDataList"]![0]![0]="o_inv_gold";exact["inventoryDataList"]![0]![1]!["Stack"]=1000;Write(exact);preview=PaidRespec.Preview(root);await service.RespecAsync(preview);after=PaidRespec.Decode(File.ReadAllBytes(path),Salt);Check(after["inventoryDataList"]!.AsArray().Count==3&&after["inventoryDataList"]![0]![1]!["Stack"]!.GetValue<int>()==0,"exact funds remove empty loose coin pile but retain empty purse");
+        foreach(int level in new[]{30,31,32,1001}){
+            var high=Fixture();high["characterDataMap"]!["LVL"]=level;Write(high);
+            var highPreview=PaidRespec.Preview(root);await service.RespecAsync(highPreview);
+            var highAfter=PaidRespec.Decode(File.ReadAllBytes(path),Salt)["characterDataMap"]!;
+            Check(highAfter["LVL"]!.GetValue<int>()==level&&highAfter["AP"]!.GetValue<int>()==7&&highAfter["SP"]!.GetValue<int>()==4,"high-level full refund preserves level and points");
+        }
         Console.WriteLine($"{passed} paid respec checks passed; temporary fixtures only: {parent}");
     }
 }

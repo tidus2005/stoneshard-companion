@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $stage = 'locate application'
 try {
-    $appFile = Join-Path $projectRoot 'artifacts\development\0.3.31\app\StoneshardCompanion.dll'
+    $appFile = Join-Path $projectRoot 'artifacts\development\0.3.35\app\StoneshardCompanion.dll'
     if (-not (Test-Path -LiteralPath $appFile)) {
         $appFile = Join-Path $projectRoot 'src\Overlay\bin\Release\net8.0-windows\StoneshardCompanion.dll'
     }

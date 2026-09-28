@@ -16,6 +16,7 @@ public sealed class UserPreferences
     public double HungerPerHour {get;set;}
     public double ThirstPerHour {get;set;}
     public double DurabilityWarning {get;set;}=25;
+    public bool ShowCombatPreview {get;set;}=true;
     public bool ShowStats {get;set;}=true;
     public bool StatsFavoritesOnly {get;set;}
     public HashSet<string> FavoriteStats {get;set;}=[];

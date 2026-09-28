@@ -25,7 +25,7 @@ static bool br_materials_capture(void){
         RV name=object_name(item);bool exact=!strcmp(text_value(name),br_gem_keys[g]);release_value(&name);
         if(exact&&inventory_owned(item)&&member_number(item,"equipped")!=1&&member_number(item,"is_quest")!=1&&member_number(item,"quest_item")!=1){
             // Native gems occupy one slot each. Reject unexpected stacks instead
-            // of deleting more than the displayed recipe.
+            // of deleting more than the confirmed quantities.
             double stack=member_number(item,"stack");if(isfinite(stack)&&stack!=-4&&stack!=0&&stack!=1){release_value(&item);return false;}
             double id=member_number(item,"id");br_gem_ids[g][br_gems[g]++]=id;br_hash_value((uint64_t)id);
         }release_value(&item);
@@ -43,8 +43,8 @@ static bool br_location(void){
     const char* allowed[]={"Osbrook","Mannshire","Brynn","Brynn_NW","Brynn_NE","Brynn_SW","Brynn_SE","RottenWillowInn","CaravanCamp"};
     for(int i=0;i<9;i++)if(!strcmp(br_place,allowed[i]))return true;return false;
 }
-static bool br_materials_consume(int recipe){
-    for(int g=0;g<BR_GEM_COUNT;g++)for(int i=0;i<br_recipes[recipe][g];i++){
+static bool br_materials_consume(const int* selected){
+    for(int g=0;g<BR_GEM_COUNT;g++)for(int i=0;i<selected[g];i++){
         RV id=numeric(br_gem_ids[g][i]),item=instance_from_id(id);
         if(!valid_object(item)||!inventory_owned(item)){release_value(&item);return false;}
         RV args[2]={id,numeric(1)},out=call_script(0x1b4cea0,item,2,args);release_value(&out);release_value(&item);

@@ -27,7 +27,7 @@ static bool br_capture(void){
     RV player=find_instance("o_player");if(!valid_object(player)){release_value(&player);return false;}br_hash_value((uint64_t)member_number(player,"id"));release_value(&player);
     RV map=get_global("characterDataMap"),args[2]={map,string_value("nameKey")},name=call_builtin(0x51e4510,2,args);snprintf(br_character,sizeof(br_character),"%s",text_value(name));release_value(&name);release_value(&map);
     const char* names[]={"Arna","Jorgrim","Dirwin","Jonna","Velmir"};const int bases[][5]={{11,11,10,11,10},{11,10,11,11,10},{10,11,11,11,10},{10,10,11,11,11},{11,11,11,10,10}};int c=-1;for(int i=0;i<5;i++)if(!strcmp(names[i],br_character))c=i;if(c<0)return false;memcpy(br_base,bases[c],sizeof(br_base));
-    for(int i=0;i<8;i++){double v=character_stat(br_attrs[i]);if(!isfinite(v)||v<0||v>1000||floor(v)!=v)return false;br_values[i]=(int)v;br_hash_value((uint64_t)v);}for(int i=0;i<5;i++)if(br_values[i]<br_base[i]||br_values[i]>30)return false;
+    for(int i=0;i<8;i++){double v=character_stat(br_attrs[i]);if(!isfinite(v)||v<0||v>1000000||floor(v)!=v)return false;br_values[i]=(int)v;br_hash_value((uint64_t)v);}for(int i=0;i<5;i++)if(br_values[i]<br_base[i]||br_values[i]>30)return false;
     br_gold=br_money();br_hash_value(shared->scene_generation);
     if(!br_progress(true)||!br_materials_capture()){snprintf(br_debug,sizeof(br_debug),"materials or contract ledger");return false;}br_safe_place=br_location();br_hash_value(br_ledger);br_hash_value(br_safe_place);
     for(int c=0;c<32;c++){RV cat=indexed_instance("o_skill_category",c);if(!valid_object(cat)){release_value(&cat);break;}if(c==31)br_bad=true;RV id=live_member(cat,"connectionsRender"),render=instance_from_id(id);RV available=live_member(cat,"skill");bool empty=ba_size(available)==0;if(ba_size(available)==1){RV first=ba_get(available,0);empty=number(first)==-4||!strcmp(text_value(first),"1");release_value(&first);}release_value(&available);release_value(&id);release_value(&cat);if(empty&&!valid_object(render)){release_value(&render);continue;}
@@ -69,10 +69,37 @@ static RV br_list_get(RV list,int i){RV a[2]={list,numeric(i)};return call_built
 // The actual native quickbar is o_skill_fast_panel. Reject absent/invalid
 // lists before invoking a GameMaker builtin (undefined IDs abort the runner).
 static bool br_hotbar(RV icon,bool write){RV panel=find_instance("o_skill_fast_panel");if(!valid_object(panel)){release_value(&panel);return false;}RV lists=live_member(panel,"skills");int n=br_list_count(lists);double child=member_number(icon,"child_skill");bool ok=n>=0&&(isfinite(child)||member_number(icon,"passive")==1);for(int i=0;i<n;i++){RV list=br_list_get(lists,i);int m=br_list_count(list);if(m<0)ok=false;for(int j=0;j<m;j++){RV v=br_list_get(list,j);if(write&&isfinite(child)&&child>=0&&number(v)==child){RV args[3]={list,numeric(j),numeric(-4)},out=call_builtin(0x51e2f00,3,args);release_value(&out);}release_value(&v);}release_value(&list);}release_value(&lists);release_value(&panel);return ok;}
-static bool br_mutated;
+static char br_type;static int br_id,br_at_node,br_selected[BR_GEM_COUNT],br_expected_gems[BR_GEM_COUNT];
+static double br_old_can_learn;
+static void br_points_set(bool apply){
+    if(br_type=='A'){br_set_stat(br_attrs[br_id],br_values[br_id]-(apply?1:0));br_set_stat("AP",br_values[5]+(apply?1:0));}
+    else{set_member(br_nodes[br_at_node].icon,"is_open",numeric(apply?0:1));set_member(br_nodes[br_at_node].icon,"can_learn",numeric(apply?1:br_old_can_learn));br_set_stat("SP",br_values[6]+(apply?1:0));}
+    RV player=find_instance("o_player"),out=call_script(0x1ce3050,player,0,NULL);release_value(&out);
+    RV recalc[2]={numeric(member_number(player,"id")),{.kind=5}};out=call_script(0xb66380,player,2,recalc);release_value(&out);release_value(&player);
+}
+static bool br_points_match(bool applied){
+    for(int i=0;i<8;i++){
+        int expected=br_values[i];if(applied){if(br_type=='A'){if(i==br_id)expected--;if(i==5)expected++;}else if(i==6)expected++;}
+        if(character_stat(br_attrs[i])!=expected)return false;
+    }
+    for(int i=0;i<br_count;i++)if(br_nodes[i].skill>=0&&member_number(br_nodes[i].icon,"is_open")!=(applied&&br_type=='S'&&i==br_at_node?0:br_nodes[i].learned))return false;
+    return br_type=='A'||member_number(br_nodes[br_at_node].icon,"can_learn")== (applied?1:br_old_can_learn);
+}
+static bool br_cost_commit(void){
+    if(!br_materials_consume(br_selected))return false;
+    RV map=get_global("characterDataMap");bool ok=br_map_number_set(map,br_ledger_key,br_ledger-1);release_value(&map);return ok;
+}
+static bool br_finish_commit(void){
+    if(br_type=='S'&&!br_hotbar(br_nodes[br_at_node].icon,true))return false;
+    RV map=get_global("characterDataMap"),value=br_map_get(map,br_ledger_key);bool ok=number(value)==br_ledger-1;release_value(&value);release_value(&map);
+    if(!ok||!br_materials_capture()||br_money()!=br_gold||br_bad)return false;
+    for(int i=0;i<BR_GEM_COUNT;i++)if(br_gems[i]!=br_expected_gems[i])return false;return true;
+}
+#include "refund_commit.h"
 static const char* build_refund(const char* payload){
     br_mutated=false;
-    unsigned long long expected=0;char type=0,tail=0;int id=-1,recipe=-1;if(sscanf(payload,"%16llx|%c|%d|%d%c",&expected,&type,&id,&recipe,&tail)!=4)return "退点请求无效";
+    if(br_refund_locked)return "上次退点结果异常，本次未执行；请退出游戏并核对保险备份后再使用";
+    uint64_t expected=0;char type=0;int id=-1,selected[BR_GEM_COUNT];if(!br_refund_parse(payload,&expected,&type,&id,selected))return "退点请求无效，请使用新版助手";
     RV player=find_instance("o_player");bool ready=valid_object(player)&&member_number(player,"turn_available")==1&&member_number(player,"movingIsDone")==1&&member_number(player,"HP")>0&&!walk_threat(player)&&shared->walk_state!=WALK_ACTIVE&&!forage_phase;
     release_value(&player);if(!ready)return "请停步，离开战斗并等待回合结束";
     if(!br_capture()){br_release();return "当前角色数据不可用";}const char* error=NULL;int at=-1;
@@ -84,18 +111,11 @@ static const char* build_refund(const char* payload){
     for(int i=0;!error&&i<br_count;i++)if(br_nodes[i].skill>=0&&br_nodes[i].learned&&member_number(br_nodes[i].icon,"KD")>0)error="请等待技能冷却结束后再退点";
     if(!error&&!br_safe_place)error="请回到城镇或马车营地再退点";
     if(!error&&br_credit<1)error="历练机会不足，请完成并交付契约";
-    if(!error&&!br_recipe_allowed(recipe,type,br_gems))error="配方无效或主背包材料不足";
+    if(!error&&!br_materials_allowed(type,br_gems,selected))error="所选宝石不足 600 基础价值，或主背包材料不足";
+    if(!error&&br_values[type=='A'?5:6]>=1000000)error="可用点数超出支持范围，未执行退点";
+    if(!error&&type=='S'){br_old_can_learn=member_number(br_nodes[at].icon,"can_learn");if(br_old_can_learn!=0&&br_old_can_learn!=1)error="技能学习状态未通过校验";}
     if(error){br_release();return error;}
-    // Every expected failure is checked before this event-thread transaction.
-    // No native gold payment is involved in the material policy.
-    br_mutated=true;player=find_instance("o_player");RV out={.kind=5};
-    if(!br_materials_consume(recipe)){release_value(&player);br_release();return "材料消耗结果异常，请勿重试，使用保险备份恢复";}
-    RV ledgerMap=get_global("characterDataMap");bool ledgerOk=br_map_number_set(ledgerMap,br_ledger_key,br_ledger-1);release_value(&ledgerMap);
-    if(!ledgerOk){release_value(&player);br_release();return "历练写入异常，请使用保险备份恢复";}
-    if(type=='A'){br_set_stat(br_attrs[id],br_values[id]-1);br_set_stat("AP",br_values[5]+1);}
-    // Already learned skills retain their unlocked knowledge when refunded.
-    // Native C/S still controls prerequisites and spending the returned point.
-    else{set_member(br_nodes[at].icon,"is_open",numeric(0));set_member(br_nodes[at].icon,"can_learn",numeric(1));br_hotbar(br_nodes[at].icon,true);br_set_stat("SP",br_values[6]+1);}
-    out=call_script(0x1ce3050,player,0,NULL);release_value(&out);
-    RV recalc[2]={numeric(member_number(player,"id")),{.kind=5}};out=call_script(0xb66380,player,2,recalc);release_value(&out);release_value(&player);br_release();return NULL;
+    br_type=type;br_id=id;br_at_node=at;memcpy(br_selected,selected,sizeof(br_selected));
+    for(int i=0;i<BR_GEM_COUNT;i++)br_expected_gems[i]=br_gems[i]-selected[i];
+    error=br_commit();br_release();return error;
 }

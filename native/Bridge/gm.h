@@ -139,6 +139,8 @@ static uint32_t blocking_ui(void){
 }
 #include "supplies.h"
 #include "telemetry.h"
+#include "combat_preview.h"
+#include "combat_preview.h"
 static void refresh_scene(void){
     if(!global_scope)init_gm();
     RV player,camera;bool play=scene_objects(&player,&camera);
@@ -165,6 +167,8 @@ static void refresh_scene(void){
     shared->scene_ready=play&&playable_since&&GetTickCount64()-playable_since>=600;
     refresh_supplies(play,player);
     refresh_telemetry(play,player);
+    refresh_combat(play,player);
+    refresh_combat(play,player);
 }
 // Read-only development diagnostic. Enumerate variable names through the runner,
 // never infer a field from a numerical offset or keep dynamic string pointers.

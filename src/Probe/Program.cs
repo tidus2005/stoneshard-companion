@@ -3,6 +3,7 @@ using System.Text.Json;
 
 Console.OutputEncoding=new System.Text.UTF8Encoding(false);
 try{
+    if(args.Length>0&&args[0]=="CombatPreviewTest"){CombatPreviewChecks.Run();return;}
     if(args.Length>0&&args[0]=="LiveBuildTest"){LiveBuildChecks.Run();return;}
     if(args.Length>0&&args[0]=="BuildEditorTest"){await BuildEditorChecks.Run();return;}
     if(args.Length>1&&args[0]=="BuildPreview"){Console.WriteLine(JsonSerializer.Serialize(BuildEditor.Read(args[1]),new JsonSerializerOptions{WriteIndented=true}));return;}
@@ -35,7 +36,7 @@ try{
         return;
     }
     if(args.Length>1&&args[1]=="Status"){
-        using var map=System.IO.MemoryMappedFiles.MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v22.{session.Pid}",System.IO.MemoryMappedFiles.MemoryMappedFileRights.Read);
+        using var map=System.IO.MemoryMappedFiles.MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v25.{session.Pid}",System.IO.MemoryMappedFiles.MemoryMappedFileRights.Read);
         using var view=map.CreateViewAccessor(0,131072,System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read);
         Console.WriteLine(JsonSerializer.Serialize(new{sceneReady=view.ReadInt32(3772),ready=view.ReadInt32(12),preferred=view.ReadDouble(3792),suspend=view.ReadUInt32(3800),uiFlags=view.ReadUInt32(3804),updated=view.ReadInt64(3872),now=Environment.TickCount64,foreground=session.IsForeground,target=view.ReadDouble(80),cameraMode=view.ReadInt32(160),visor=view.ReadInt32(164),samples=view.ReadUInt64(176),autoCenter=view.ReadInt32(3768)==1,cameraX=view.ReadDouble(96),cameraY=view.ReadDouble(104),cameraWidth=view.ReadDouble(112),cameraHeight=view.ReadDouble(120),mapWidth=view.ReadDouble(128),mapHeight=view.ReadDouble(136),playerX=view.ReadDouble(144),playerY=view.ReadDouble(152)},new JsonSerializerOptions{WriteIndented=true}));return;
     }

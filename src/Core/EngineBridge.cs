@@ -6,7 +6,7 @@ using System.Text;
 
 namespace StoneshardCompanion;
 
-public enum EngineCommand : uint { Refresh=1,Speed=2,Center=3,Player=4,Visor=5,Reset=6,Diagnostic=7,AutoCenter=8,Suspend=9,Inspect=10,Drink=11,Torch=12,Highlight=13,Walk=14,HighlightSet=15,WalkKeysSet=16,Fodder=17,AutomationSet=18,SaveNow=19,BuildRead=20,BuildRefund=21 }
+public enum EngineCommand : uint { Refresh=1,Speed=2,Center=3,Player=4,Visor=5,Reset=6,Diagnostic=7,AutoCenter=8,Suspend=9,Inspect=10,Drink=11,Torch=12,Highlight=13,Walk=14,HighlightSet=15,WalkKeysSet=16,Fodder=17,AutomationSet=18,SaveNow=19,BuildRead=20,BuildRefund=21,CombatPreviewSet=22 }
 public sealed record EngineState(int Error,uint Capabilities,double BaseSpeed,double TargetSpeed,double Multiplier,double CameraX,double CameraY,double CameraWidth,double CameraHeight,double MapWidth,double MapHeight,double PlayerX,double PlayerY,int CameraMode,int VisorState,ulong Samples,string Detail,string Diagnostic,bool AutoCenter,
     bool SceneReady,ulong SceneGeneration,ulong WindowGeneration,double PreferredMultiplier,uint SuspendReasons,uint UiFlags,double Hunger,double Thirst,double Pain,double Intoxication,double GuiWidth,double GuiHeight,uint VitalValid,int HighlightState,int TorchState,int WaterUses,long UpdatedAt,bool Ready)
 {
@@ -24,6 +24,8 @@ public sealed record EngineState(int Error,uint Capabilities,double BaseSpeed,do
     public double WalkY {get;init;}
     public ulong LabelDrawCalls {get;init;}
     public ulong LabelDrawOverrides {get;init;}
+    public CombatTelemetry Combat {get;init;}=new();
+    public bool CombatEnabled {get;init;}
     public CharacterTelemetry Telemetry {get;init;}=new();
     public bool SpeedUiAllowed => (UiFlags & (2u|4u|16u|32u)) == 0;
     public static string WalkDestinationName(int direction) => direction switch {
@@ -51,7 +53,7 @@ public sealed class EngineBridge : IDisposable
     private EngineBridge(GameSession session,MemoryMappedFile map,FileStream ownership)
     {
         Session=session;mapping=map;lease=ownership;view=map.CreateViewAccessor(0,131072);
-        if(view.ReadUInt32(0)!=Native.Magic || view.ReadUInt32(4)!=22 || view.ReadInt32(8)!=session.Pid || view.ReadInt64(16)!=session.Started){view.Dispose();throw new InvalidDataException("游戏连接校验失败。");}
+        if(view.ReadUInt32(0)!=Native.Magic || view.ReadUInt32(4)!=25 || view.ReadInt32(8)!=session.Pid || view.ReadInt64(16)!=session.Started){view.Dispose();throw new InvalidDataException("游戏连接校验失败。");}
         sequence=view.ReadInt32(32);
         Heartbeat();heartbeat=new Timer(_=>{try{Heartbeat();}catch(ObjectDisposedException){}},null,200,200);
     }
@@ -64,8 +66,8 @@ public sealed class EngineBridge : IDisposable
         catch(IOException){throw new IOException("另一个控制器正在连接此游戏，请先关闭它。");}
         try{
         await session.ValidateAsync(token);
-        string name=$"Local\\StoneshardCompanion.v22.{session.Pid}";
-        foreach(int version in new[]{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21})try{using var old=MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v{version}.{session.Pid}",MemoryMappedFileRights.Read);throw new NotSupportedException("游戏仍加载旧版助手组件，请在方便时正常退出游戏并重新启动一次。");}catch(FileNotFoundException){}
+        string name=$"Local\\StoneshardCompanion.v25.{session.Pid}";
+        foreach(int version in new[]{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24})try{using var old=MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v{version}.{session.Pid}",MemoryMappedFileRights.Read);throw new NotSupportedException("游戏仍加载旧版助手组件，请在方便时正常退出游戏并重新启动一次。");}catch(FileNotFoundException){}
         MemoryMappedFile? map=null;
         try{map=MemoryMappedFile.OpenExisting(name,MemoryMappedFileRights.ReadWrite);}catch(FileNotFoundException){}
         if(map is null)
@@ -96,7 +98,7 @@ public sealed class EngineBridge : IDisposable
             throw new IOException("游戏状态正在更新，请稍后重试。");
         }
     }
-    public const int SnapshotSize=61312;
+    public const int SnapshotSize=128904;
     public static EngineState DecodeSnapshot(byte[] bytes)
     {
         if(bytes.Length<SnapshotSize)throw new InvalidDataException("游戏状态数据不完整。");
@@ -105,7 +107,7 @@ public sealed class EngineBridge : IDisposable
         string S(int at,int max){int end=Array.IndexOf(bytes,(byte)0,at,max);return Encoding.UTF8.GetString(bytes,at,(end<0?at+max:end)-at);}
         return new(I(64),BitConverter.ToUInt32(bytes,68),D(72),D(80),D(88),D(96),D(104),D(112),D(120),D(128),D(136),D(144),D(152),I(160),I(164),BitConverter.ToUInt64(bytes,176),S(184,512),S(696,3072),I(3768)==1,
             I(3772)==1,BitConverter.ToUInt64(bytes,3776),BitConverter.ToUInt64(bytes,3784),D(3792),(uint)I(3800),(uint)I(3804),D(3808),D(3816),D(3824),D(3832),D(3840),D(3848),(uint)I(3856),I(3860),I(3864),I(3868),BitConverter.ToInt64(bytes,3872),I(12)==1)
-            {SupplyFlags=(uint)I(3896),TorchCount=I(3900),TorchDuration=D(3904),HighlightApplied=I(3912)==1,WalkState=(uint)I(3916),WalkDirection=I(3920),WalkPhase=(uint)I(3960),Telemetry=CharacterTelemetry.Parse(S(3968,57344)),WalkKeysEnabled=I(3964)==1,LabelHookReady=I(3924)==1,WalkX=D(3928),WalkY=D(3936),LabelDrawCalls=BitConverter.ToUInt64(bytes,3944),LabelDrawOverrides=BitConverter.ToUInt64(bytes,3952)};
+            {Combat=CombatTelemetry.Parse(S(120704,8192)),CombatEnabled=I(128896)==1,SupplyFlags=(uint)I(3896),TorchCount=I(3900),TorchDuration=D(3904),HighlightApplied=I(3912)==1,WalkState=(uint)I(3916),WalkDirection=I(3920),WalkPhase=(uint)I(3960),Telemetry=CharacterTelemetry.Parse(S(3968,57344)),WalkKeysEnabled=I(3964)==1,LabelHookReady=I(3924)==1,WalkX=D(3928),WalkY=D(3936),LabelDrawCalls=BitConverter.ToUInt64(bytes,3944),LabelDrawOverrides=BitConverter.ToUInt64(bytes,3952)};
     }
     public async Task<EngineState> SendAsync(EngineCommand command,double argument=0,CancellationToken token=default,string? payload=null)
     {

@@ -43,7 +43,7 @@ public static class BuildEditor
         string name=c["nameKey"]!.GetValue<string>();
         if(!PaidRespec.Bases.TryGetValue(name,out var baseline))throw new IOException("尚未核实这个角色的初始属性："+name);
         int[] attributes=PaidRespec.Attributes.Select(k=>Int(c[k])).ToArray();int level=Int(c["LVL"]);
-        if(level is <1 or >30||attributes.Where((n,i)=>n<baseline[i]||n>30).Any())throw new IOException("角色等级或基础属性超出支持范围。");
+        if(level is <1 or >1_000_000||attributes.Where((n,i)=>n<baseline[i]||n>30).Any())throw new IOException("角色等级或基础属性超出支持范围。");
         var all=data["skillsDataMap"]!["skillsAllDataList"]!.AsArray();
         if(all.Count==0||all.Count%5!=0)throw new IOException("技能存档结构异常。");
         var skills=new List<BuildSkill>();var seen=new HashSet<string>(StringComparer.Ordinal);

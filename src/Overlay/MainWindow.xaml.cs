@@ -17,6 +17,9 @@ public partial class MainWindow : Window
     public string Status {get;private set;}="等待游戏启动";
     private readonly HudWindow hud;
     private readonly StatsWindow stats;
+    private readonly CombatPreviewWindow combatPreview=new();
+    private CombatTelemetry latestCombat=new();
+    private CombatInspectorWindow? combatInspector;
     private FodderWindow? fodderWindow;
     private BuildEditorWindow? buildEditorWindow;
     public CharacterTelemetry CharacterData {get;private set;}=new();
@@ -87,6 +90,7 @@ public partial class MainWindow : Window
         hwnd=new WindowInteropHelper(this).Handle;HwndSource.FromHwnd(hwnd).AddHook(WndProc);
         for(int n=1;n<=4;n++){int target=n;shortcuts[n]=((uint)(0x30+n),()=>ChooseSpeed(target));}
         shortcuts[5]=(0x48,()=>RunAction(EngineCommand.Visor));
+        shortcuts[22]=(0x49,OpenCombatInspector);
         shortcuts[6]=(0x43,()=>RunAction(EngineCommand.Center));shortcuts[7]=(0x52,()=>RunAction(EngineCommand.Player));
         shortcuts[8]=(0x4C,ToggleLabels);
         uint[] arrows=[0x26,0x28,0x25,0x27];for(int n=0;n<4;n++){int direction=n+1;shortcuts[12+n]=(arrows[n],()=>Walk(direction));}
@@ -147,6 +151,7 @@ public partial class MainWindow : Window
             if(front&&state.Ready&&state.Fresh&&state.SceneReady&&state.SpeedUiAllowed&&!busy&&intent.NeedsApply(state.PreferredMultiplier)){
                 await SendAsync(EngineCommand.Speed,PreferredSpeed,false);if(closing)return;state=bridge.ReadState();
             }
+            if(state.Ready&&state.Fresh&&!busy&&state.CombatEnabled!=Preferences.ShowCombatPreview)await SendAsync(EngineCommand.CombatPreviewSet,Preferences.ShowCombatPreview?1:0,false);
             if(state.Ready&&state.Fresh&&!busy&&state.AutoCenter!=Preferences.AutoCenter)await SendAsync(EngineCommand.AutoCenter,Preferences.AutoCenter?1:0,false);
             if(state.Ready&&state.Fresh&&!busy&&(state.HighlightState==1)!=Preferences.ShowLabels)await SendAsync(EngineCommand.HighlightSet,Preferences.ShowLabels?1:0,false);
             if(closing)return;
@@ -177,6 +182,8 @@ public partial class MainWindow : Window
     {
         CharacterData=state is {Ready:true,Fresh:true,SceneReady:true}?state.Telemetry:new();
         stats.Refresh(CharacterData);
+        latestCombat=state?.Combat??new();
+        combatPreview.Update(state?.Combat??new(),CharacterData,state?.SceneGeneration??0,Preferences.ShowCombatPreview&&!folded&&session?.IsForeground==true&&state is {Ready:true,Fresh:true,SceneReady:true}&&(state.UiFlags&~8u)==0);
         // Yield both overlays while the bridge prepares/sends its real click.
         if(state is {Ready:true,Fresh:true,WalkState:1,WalkPhase:1 or 2}){HideHud();return;}
         if(!Preferences.ShowStats||!CharacterData.Fresh(Environment.TickCount64)||folded||!GameOrAssistantForeground()||(state!.UiFlags&~8u)!=0)stats.Hide();
@@ -193,7 +200,11 @@ public partial class MainWindow : Window
         hud.PlaceDesktop();
     }
     private bool GameOrAssistantForeground(){Native.GetWindowThreadProcessId(Native.GetForegroundWindow(),out var pid);return session?.IsForeground==true||pid==Environment.ProcessId;}
-    private void HideHud(){hud.Hide();stats.Hide();}
+    private void OpenCombatInspector(){
+        if(!latestCombat.Fresh(Environment.TickCount64,lastScene)){ShowError("请先将鼠标悬停在可见目标上，再按 Ctrl+Alt+I。");return;}
+        combatInspector?.Close();combatInspector=new(latestCombat,CharacterData){Owner=this,Topmost=true};combatInspector.Show();combatInspector.Activate();
+    }
+    private void HideHud(){hud.Hide();stats.Hide();combatPreview.Hide();}
     private void SetStatus(string status){Status=status;settings?.RefreshStatus(status);}
     public void ChooseSpeed(int multiplier)
     {
@@ -318,16 +329,18 @@ public partial class MainWindow : Window
     }
     public async Task<string> RefundPointAsync(LiveBuildSnapshot before,PointRefund refund){
         LiveBuild.Validate(before,refund);
+        refund=refund with{Materials=(int[])refund.Materials.Clone()};
         if(bridge is null||busy||liveSaving||Saves.Busy||closing)throw new IOException("助手正在执行其他操作，请稍后重试。");
-        busy=liveSaving=true;var target=bridge;var targetSession=session;bool submitted=false;string backup="";
+        var journal=new RefundJournal(Path.Combine(UserPreferences.Folder,"RefundTransactions",bridge.Session.Key+".json"));journal.RequireClear();
+        busy=liveSaving=true;var target=bridge;var targetSession=session;bool submitted=false,pointsVerified=false;string backup="",stage="准备保存";LiveBuildSnapshot? after=null;
         async Task Ready(){
             ReturnToGame();int stable=0;var timer=System.Diagnostics.Stopwatch.StartNew();
             while(timer.Elapsed<TimeSpan.FromSeconds(10)){
                 if(target!=bridge||session!=targetSession||closing)throw new IOException("游戏会话已变化。");
                 await Task.Delay(150);var state=await target.SendAsync(EngineCommand.Refresh);
-                if(state.Error==0&&state.SceneReady&&state.UiFlags==0){if(++stable>=2)return;}else stable=0;
+                if(state.Error==0&&state.SceneReady&&LiveBuild.RefundUiClear(state.UiFlags)){if(++stable>=2)return;}else stable=0;
             }
-            throw new IOException("游戏保存界面尚未收起，或有菜单/提示遮挡。请关闭游戏面板并移开悬停提示后重试。");
+            throw new IOException("游戏保存界面尚未收起，或有菜单/对话框遮挡。请关闭游戏面板后重试。");
         }
         async Task Save(){
             if(target!=bridge||session!=targetSession||closing)throw new IOException("游戏会话已变化。");
@@ -340,17 +353,30 @@ public partial class MainWindow : Window
             var safety=await Saves.SaveNowAsync(Save);backup=safety.Archive??throw new IOException("当前进度备份失败，未消耗材料。"+safety.BackupError);
             var read=await target.SendAsync(EngineCommand.BuildRead);if(read.Error!=0)throw new IOException(read.Detail);
             var current=LiveBuild.Parse(target.ReadBuildResponse());if(current.Token!=before.Token)throw new IOException("角色、材料或历练已变化，请刷新后重新确认；未消耗材料。");
-            await Ready();submitted=true;
+            await Ready();stage="已提交，等待点数和材料核验";
+            journal.Write(new(true,stage,backup,before,refund));
+            UserPreferences.Log($"gem-refund submitting id={refund.Id} key={(refund.Attribute?BuildEditor.AttributeLabels[refund.Id]:before.Skills.Single(x=>x.Id==refund.Id).Key)} AP={before.Attributes[5]} SP={before.Attributes[6]} materials={string.Join(",",refund.Materials)} backup={backup}");
+            submitted=true;
             var applied=await target.SendAsync(EngineCommand.BuildRefund,payload:refund.Payload(before));
             if(applied.Error!=0){submitted=applied.Error==26;throw new IOException(applied.Detail);}
-            await target.SendAsync(EngineCommand.BuildRead);var after=LiveBuild.Parse(target.ReadBuildResponse());LiveBuild.Verify(before,after,refund);
+            var verifyRead=await target.SendAsync(EngineCommand.BuildRead);if(verifyRead.Error!=0)throw new IOException(verifyRead.Detail);
+            after=LiveBuild.Parse(target.ReadBuildResponse());LiveBuild.Verify(before,after,refund);
+            pointsVerified=true;
+            stage="点数与材料已核验，等待保存";journal.Write(new(true,stage,backup,before,refund,after));
             var saved=await Saves.SaveNowAsync(Save);
             var disk=await Task.Run(()=>BuildEditor.Read(Saves.SaveRoot));
+            if(disk.Slot!=saved.Receipt.Character+"/"+saved.Receipt.Slot||!saved.Receipt.Fingerprint.StartsWith(disk.Fingerprint,StringComparison.Ordinal))throw new IOException("存档槽位或内容在核验期间变化，请勿重复退点。");
             if(disk.Character!=after.Character||disk.Crowns!=after.Crowns||disk.AP!=after.Attributes[5]||disk.SP!=after.Attributes[6]||!disk.Attributes.SequenceEqual(after.Attributes.Take(5))||after.Skills.Any(x=>disk.Skills.SingleOrDefault(y=>y.Key==x.Key)?.Learned!=x.Learned))throw new IOException("存档中的退点结果未通过核对。");
             LiveBuild.VerifySavedMaterials(disk.Path,after);
-            UserPreferences.Log($"gem-refund verified type={refund.Attribute} id={refund.Id} recipe={refund.Recipe} credits={after.Credits} backup={backup}");
-            RefreshSaveWindow();return $"已退回 1 点，消耗 {LiveBuild.Cost(LiveBuild.Recipes[refund.Recipe])} 和 1 次历练机会，已保存。按 C / S 重新分配。\n修改前保险备份：{backup}";
-        }catch(Exception e){UserPreferences.Log("gem-refund failed submitted="+submitted+" "+e);throw new IOException((submitted?"退点请求已经提交，请勿重复操作。":"未消耗材料或历练机会。")+e.Message+(backup.Length>0?"\n保险备份："+backup:""),e);}
+            journal.Write(new(false,"已核验并保存",backup,before,refund,after));
+            UserPreferences.Log($"gem-refund verified type={refund.Attribute} id={refund.Id} materials={string.Join(",",refund.Materials)} value={LiveBuild.MaterialValue(refund.Materials)} credits={after.Credits} {LiveBuild.PointSummary(before,after)} slot={disk.Slot} backup={backup}");
+            RefreshSaveWindow();return $"已退回 1 点并保存。{LiveBuild.PointSummary(before,after)}。\n消耗 {LiveBuild.Cost(refund.Materials)} 和 1 次历练机会。按 C / S 重新分配。\n修改前保险备份：{backup}";
+        }catch(Exception e){
+            try{journal.Write(new(submitted,stage,backup,before,refund,after,e.Message));}catch(Exception logError) when(logError is IOException or UnauthorizedAccessException){UserPreferences.Log("gem-refund journal failed "+logError.Message);}
+            UserPreferences.Log($"gem-refund failed submitted={submitted} stage={stage} AP={before.Attributes[5]}->{after?.Attributes[5]} SP={before.Attributes[6]}->{after?.Attributes[6]} backup={backup} "+e);
+            string outcome=submitted?(pointsVerified?"点数和材料已在游戏内核验，但后续保存核验未完成；本次游戏的退点已锁定，请勿重复操作。":"退点请求已经提交，结果待核对；本次游戏的退点已锁定，请勿重复操作。 "):"本次未消耗材料或历练机会。";
+            throw new IOException(outcome+e.Message+(backup.Length>0?"\n保险备份："+backup:""),e);
+        }
         finally{busy=liveSaving=false;}
     }
     public void OpenBuildEditor(){
@@ -410,6 +436,6 @@ public partial class MainWindow : Window
         if(closed)return;e.Cancel=true;if(closing)return;if(Saves.Busy||liveSaving){RequestExit();return;}closing=true;poll.Stop();RegisterKeys(false);HideHud();
         Updater.Dispose();intent.Stop();
         try{if(bridge is not null)await bridge.SendAsync(EngineCommand.Reset);}catch(Exception ex){UserPreferences.Log("exit-reset "+ex.Message);}
-        finally{bridge?.Dispose();Native.UnregisterHotKey(hwnd,20);Native.UnregisterHotKey(hwnd,21);tray.Dispose();settings?.Close();savesWindow?.Close();fodderWindow?.Close();buildEditorWindow?.Close();stats.Close();hud.Close();closed=true;_=Dispatcher.BeginInvoke(Close);}
+        finally{bridge?.Dispose();Native.UnregisterHotKey(hwnd,20);Native.UnregisterHotKey(hwnd,21);tray.Dispose();settings?.Close();savesWindow?.Close();fodderWindow?.Close();buildEditorWindow?.Close();combatInspector?.Close();stats.Close();combatPreview.Close();hud.Close();closed=true;_=Dispatcher.BeginInvoke(Close);}
     }
 }

@@ -41,6 +41,12 @@ internal static class BuildEditorChecks
         var changed=RespecChecks.Fixture();changed["characterDataMap"]!["XP"]=1000;Write(changed);Reject(()=>new SaveEngine(root,backups).EditBuild(snapshot,draft),"stale source rejected");
         var low=RespecChecks.Fixture();low["inventoryDataList"]![0]![1]!["Stack"]=100;low["inventoryDataList"]![1]![1]!["Stack"]=0;Write(low);snapshot=BuildEditor.Read(root);Reject(()=>new SaveEngine(root,backups).EditBuild(snapshot,draft),"caravan money cannot pay insufficient carried funds");
         var exact=RespecChecks.Fixture();exact["inventoryDataList"]![0]![0]="o_inv_gold";exact["inventoryDataList"]![0]![1]!["Stack"]=200;exact["inventoryDataList"]![1]![1]!["Stack"]=300;Write(exact);snapshot=BuildEditor.Read(root);await service.EditBuildAsync(snapshot,draft);after=PaidRespec.Decode(File.ReadAllBytes(path),salt);Check(BuildEditor.Read(root).Crowns==0&&after["inventoryDataList"]!.AsArray().Count==3,"exact mixed payment removes empty loose coins but keeps purse");
+        foreach(int level in new[]{30,31,32,1001}){
+            var high=RespecChecks.Fixture();high["characterDataMap"]!["LVL"]=level;Write(high);
+            var highSnapshot=BuildEditor.Read(root);var highDraft=BuildEditor.Draft(highSnapshot);highDraft.Attributes[0]--;
+            await service.EditBuildAsync(highSnapshot,highDraft);var highAfter=BuildEditor.Read(root);
+            Check(highAfter.Level==level&&highAfter.AP==2&&highAfter.SP==2,"high-level partial refund preserves level and returns point");
+        }
         File.WriteAllBytes(metadata,PaidRespec.Encode(new JsonObject{["valid"]=false},salt));Reject(()=>BuildEditor.Read(root),"invalid or consumed native slot rejected");
         Console.WriteLine($"{passed} build editor checks passed; fixtures: {parent}");
     }

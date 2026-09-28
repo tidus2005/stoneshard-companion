@@ -6,6 +6,7 @@ namespace StoneshardCompanion;
 public sealed record GameSession(int Pid, long Started, nint Window, string Path, string Version)
 {
     public const string SupportedHash = "D45797505F04B9112C5FBB8E85C0F8CDA2FA60AEE954B4E108BAD8A0DC514AFA";
+    public const string UncappedHash = "2154985DEAB44A615C333173FACC10335D4328E6D1FE90C08AAFD82255BD71EC";
     public string Key => $"{Pid}-{Started}";
     public bool IsForeground
     {
@@ -31,7 +32,7 @@ public sealed record GameSession(int Pid, long Started, nint Window, string Path
         if(p.StartTime.ToFileTimeUtc()!=Started || !string.Equals(p.MainModule?.FileName,Path,StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("游戏会话已改变，请重新连接。");
         await using var file=File.OpenRead(Path);
         var hash=Convert.ToHexString(await SHA256.HashDataAsync(file,token));
-        if(hash!=SupportedHash)throw new NotSupportedException($"当前游戏 {Version} 尚未适配，已停止连接。");
+        if(hash!=SupportedHash && hash!=UncappedHash)throw new NotSupportedException($"当前游戏 {Version} 尚未适配，已停止连接。");
         await using var data=File.OpenRead(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path)!,"data.win"));
         var dataHash=Convert.ToHexString(await SHA256.HashDataAsync(data,token));
         if(dataHash!="84034525FCDEF3C6FD9803628B8DE6C43FEA479C930E168A95906DE37A2AE19C" && dataHash!="53604DE8FE39EA37FEE143FBAE4415045F94BFD74B9D40B7B668660F10A53F85")

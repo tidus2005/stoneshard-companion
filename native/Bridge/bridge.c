@@ -4,6 +4,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdbool.h>
+#include "action_ui_policy.h"
 
 // GameMaker x64 ABI. Only numeric values are used by the initial speed backend.
 typedef struct RV { union { double real; int64_t integer; void* ptr; }; uint32_t flags; int32_t kind; } RV;
@@ -106,7 +107,7 @@ static void on_command(void) {
     bool action=(cmd>=CMD_CENTER&&cmd<=CMD_VISOR)||(cmd>=11&&cmd<=13)||(cmd==14&&arg!=0)||cmd==17||cmd==19||cmd==21;
     if(GetTickCount64()>deadline){publish(3,"Request expired");}
     else if(shared->request_window_generation!=shared->window_generation || (action&&shared->request_scene_generation!=shared->scene_generation))publish(9,"Scene or window changed; action cancelled");
-    else if(action&&(!shared->scene_ready||(shared->ui_flags&(cmd==14?~8u:~0u))))publish(7,"Native UI or scene blocks actions");
+    else if(action&&(!shared->scene_ready||action_ui_blocked(cmd,shared->ui_flags)))publish(7,"Native UI or scene blocks actions");
     else if(((cmd>=CMD_SPEED&&cmd<=CMD_VISOR)||action)&&foreground_pid!=GetCurrentProcessId())publish(8,"Game is not in foreground");
     else if(cmd==CMD_SPEED){
         if(!isfinite(arg)||arg<1 || arg>4 || floor(arg)!=arg)publish(4,"Invalid multiplier");
@@ -135,6 +136,7 @@ static void on_command(void) {
     else if(cmd==18){if(!isfinite(arg)||floor(arg)!=arg||arg<0||arg>7)publish(4,"Invalid automation flags");else{if(!forage_configure(shared->fodder_selection)){automation_flags=0;publish(4,"Invalid forage rules; automation disabled");return;}if(forage_phase)forage_stop(WALK_MANUAL);forage_reset_targets();forage_inventory_due=0;automation_flags=(unsigned)arg;memcpy(automation_selection,shared->fodder_selection,sizeof(automation_selection));automation_selection[2047]=0;publish(0,"Automation preferences synchronized");}}
     else if(cmd==11){if(arg!=0&&arg!=1)publish(4,"Invalid water mode");else{int result=drink_water(arg==1);publish(result,result?"Water action unavailable or not confirmed":"Water consumed by native action");}}
     else if(cmd==12){if(arg!=0&&arg!=1&&arg!=2&&arg!=18&&arg!=18)publish(4,"Invalid torch mode");else{int mode=(int)arg;int result=toggle_torch(mode&3,(mode&16)!=0);publish(result,result?"Torch action unavailable or not confirmed":"Torch native action confirmed");}}
+    else if(cmd==22){if(arg!=0&&arg!=1)publish(4,"Invalid combat preview flag");else{shared->combat_enabled=(uint32_t)arg;combat_due=0;publish(0,"Combat preview synchronized");}}
     else publish(2,"Capability not initialized");
     InterlockedExchange(&shared->ack_seq,seq);
 }
@@ -230,7 +232,7 @@ __declspec(dllexport) DWORD WINAPI BridgeStart(void* ignored) {
     // Startup can expose a window before the frame manager is initialized.
     // Do not publish a mapping until a valid baseline exists; allow a later retry.
     baseline=get_speed();if(!isfinite(baseline)||baseline<1 || baseline>240)return start_failed(15);
-    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v22.%lu",GetCurrentProcessId());
+    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v25.%lu",GetCurrentProcessId());
     mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,NULL,PAGE_READWRITE,0,131072,name);
     if(!mapping)return start_failed(12);
     if(GetLastError()==ERROR_ALREADY_EXISTS)return start_failed(13);
