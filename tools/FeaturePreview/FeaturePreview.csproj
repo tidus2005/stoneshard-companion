@@ -7,6 +7,7 @@
 <Compile Include="../../src/Overlay/StatsWindow.cs" Link="StatsWindow.cs"/>
 <Compile Include="../../src/Overlay/FodderWindow.cs" Link="FodderWindow.cs"/>
 <Compile Include="../../src/Overlay/UserPreferences.cs" Link="UserPreferences.cs"/>
+<Compile Include="../../src/Overlay/JourneyChecklistWindow.cs" Link="JourneyChecklistWindow.cs"/>
 <Page Include="../../src/Overlay/PanelTheme.xaml" Link="PanelTheme.xaml"/>
 </ItemGroup>
 </Project>

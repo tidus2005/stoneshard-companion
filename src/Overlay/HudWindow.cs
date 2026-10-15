@@ -91,7 +91,7 @@ public sealed class HudWindow : Window
         Add("return-arrow","快速读档","还原最近一次手动备份；先查看目标与确认，不受 latest 快照影响",0,owner.QuickRestore);
         autoStow=Add("gears","自动收纳","打开 I 和装备的背包后自动收纳战利品",0,owner.ToggleAutoStow);
         Add("gears","逐点退回","消耗宝石与历练机会退回属性或技能点，再在原版界面重新分配",0,owner.OpenBuildEditor);
-        Add("save-backup","立即存档","保存当前游戏进度；从游戏原版 Load → 自动存档读取",2,owner.SaveNow);
+        Add("save-backup","立即存档","保存当前游戏进度 · Ctrl+Alt+F5；从游戏原版 Load → 自动存档读取",2,owner.SaveNow);
         actions.Children.Clear();
         foreach(int i in new[]{18,13,16,0,1,2,3,4,5,6,7,8,15,9,14,17,10,11,12})actions.Children.Add(cells[i].Button);
         Grid.SetRow(provisions,3);body.Children.Add(provisions);Grid.SetRow(equipment,4);body.Children.Add(equipment);

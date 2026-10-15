@@ -32,10 +32,9 @@ public sealed record GameSession(int Pid, long Started, nint Window, string Path
         if(p.StartTime.ToFileTimeUtc()!=Started || !string.Equals(p.MainModule?.FileName,Path,StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("游戏会话已改变，请重新连接。");
         await using var file=File.OpenRead(Path);
         var hash=Convert.ToHexString(await SHA256.HashDataAsync(file,token));
-        if(hash!=SupportedHash && hash!=UncappedHash)throw new NotSupportedException($"当前游戏 {Version} 尚未适配，已停止连接。");
         await using var data=File.OpenRead(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path)!,"data.win"));
         var dataHash=Convert.ToHexString(await SHA256.HashDataAsync(data,token));
-        if(dataHash!="84034525FCDEF3C6FD9803628B8DE6C43FEA479C930E168A95906DE37A2AE19C" && dataHash!="53604DE8FE39EA37FEE143FBAE4415045F94BFD74B9D40B7B668660F10A53F85")
-            throw new NotSupportedException("游戏数据包与已适配版本不同，请使用原版 0.9.4.25。");
+        string? rejection=GameCompatibility.Rejection(Version,hash,dataHash,GameCompatibility.InspectRuntime(data));
+        if(rejection is not null)throw new NotSupportedException(rejection+GameCompatibility.Fingerprints(hash,dataHash));
     }
 }

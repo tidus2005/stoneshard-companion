@@ -24,6 +24,15 @@ public static class FeaturePreview {
   var app=new App();SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext());RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;
   string output=Path.GetFullPath(args[0]);Directory.CreateDirectory(output);
   var owner=new MainWindow();
+  var checklist=new JourneyChecklistWindow(owner);Export(checklist,"journey-checklist.png",466,650);
+  var checklistChecks=Descendants((DependencyObject)checklist.Content).OfType<CheckBox>().ToArray();
+  if(checklistChecks.Length!=8||checklistChecks.Any(c=>c.IsChecked==true))throw new Exception("Fresh journey must require manual confirmation");
+  checklistChecks[0].IsChecked=true;
+  Descendants((DependencyObject)checklist.Content).OfType<Button>().Single(b=>Equals(b.Content,"重新检查本次行旅")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+  if(Descendants((DependencyObject)checklist.Content).OfType<CheckBox>().Any(c=>c.IsChecked==true))throw new Exception("Journey reset retained a stale confirmation");
+  owner.Preferences.JourneyChecklist="水源旁逐个补满饮水容器，保留每个原版操作的回合消耗\n为本次长途出行保留食材，不将珍贵食材误转成饲料";
+  var customChecklist=new JourneyChecklistWindow(owner);Export(customChecklist,"journey-checklist-narrow.png",340,580);
+  if(Descendants((DependencyObject)customChecklist.Content).OfType<CheckBox>().Count()!=2)throw new Exception("Custom checklist not reflected");
   owner.CharacterData=new(){At=Environment.TickCount64,Player=123,FoodsComplete=true,Foods=[new("o_inv_blueberry","蓝莓",3,7),new("o_inv_morel","羊肚菌",0,2)],Stats=StatsCatalog.All.Select((d,i)=>new StatReading(d.Key,i==0?15: i==10?112.5:10+i*.25,i==10?100:null)).ToArray()};
   var stats=new StatsWindow(owner);stats.Refresh(owner.CharacterData);Export(stats,"stats-tall.png",300,850);
   var buttons=Descendants((DependencyObject)stats.Content).OfType<Button>().ToArray();buttons.Single(b=>Equals(b.Content,"设为基线")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));

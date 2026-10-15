@@ -53,7 +53,7 @@ public sealed class EngineBridge : IDisposable
     private EngineBridge(GameSession session,MemoryMappedFile map,FileStream ownership)
     {
         Session=session;mapping=map;lease=ownership;view=map.CreateViewAccessor(0,131072);
-        if(view.ReadUInt32(0)!=Native.Magic || view.ReadUInt32(4)!=25 || view.ReadInt32(8)!=session.Pid || view.ReadInt64(16)!=session.Started){view.Dispose();throw new InvalidDataException("游戏连接校验失败。");}
+        if(view.ReadUInt32(0)!=Native.Magic || view.ReadUInt32(4)!=26 || view.ReadInt32(8)!=session.Pid || view.ReadInt64(16)!=session.Started){view.Dispose();throw new InvalidDataException("游戏连接校验失败。");}
         sequence=view.ReadInt32(32);
         Heartbeat();heartbeat=new Timer(_=>{try{Heartbeat();}catch(ObjectDisposedException){}},null,200,200);
     }
@@ -66,8 +66,8 @@ public sealed class EngineBridge : IDisposable
         catch(IOException){throw new IOException("另一个控制器正在连接此游戏，请先关闭它。");}
         try{
         await session.ValidateAsync(token);
-        string name=$"Local\\StoneshardCompanion.v25.{session.Pid}";
-        foreach(int version in new[]{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24})try{using var old=MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v{version}.{session.Pid}",MemoryMappedFileRights.Read);throw new NotSupportedException("游戏仍加载旧版助手组件，请在方便时正常退出游戏并重新启动一次。");}catch(FileNotFoundException){}
+        string name=$"Local\\StoneshardCompanion.v26.{session.Pid}";
+        foreach(int version in Enumerable.Range(1,25))try{using var old=MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v{version}.{session.Pid}",MemoryMappedFileRights.Read);throw new NotSupportedException("游戏仍加载旧版助手组件，请在方便时正常退出游戏并重新启动一次。");}catch(FileNotFoundException){}
         MemoryMappedFile? map=null;
         try{map=MemoryMappedFile.OpenExisting(name,MemoryMappedFileRights.ReadWrite);}catch(FileNotFoundException){}
         if(map is null)

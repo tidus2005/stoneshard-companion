@@ -3,6 +3,7 @@ using System.Text.Json;
 
 Console.OutputEncoding=new System.Text.UTF8Encoding(false);
 try{
+    if(args.Length>0&&args[0]=="GameCompatibilityTest"){GameCompatibilityChecks.Run();return;}
     if(args.Length>0&&args[0]=="CombatPreviewTest"){CombatPreviewChecks.Run();return;}
     if(args.Length>0&&args[0]=="LiveBuildTest"){LiveBuildChecks.Run();return;}
     if(args.Length>0&&args[0]=="BuildEditorTest"){await BuildEditorChecks.Run();return;}
@@ -36,7 +37,7 @@ try{
         return;
     }
     if(args.Length>1&&args[1]=="Status"){
-        using var map=System.IO.MemoryMappedFiles.MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v25.{session.Pid}",System.IO.MemoryMappedFiles.MemoryMappedFileRights.Read);
+        using var map=System.IO.MemoryMappedFiles.MemoryMappedFile.OpenExisting($"Local\\StoneshardCompanion.v26.{session.Pid}",System.IO.MemoryMappedFiles.MemoryMappedFileRights.Read);
         using var view=map.CreateViewAccessor(0,131072,System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read);
         Console.WriteLine(JsonSerializer.Serialize(new{sceneReady=view.ReadInt32(3772),ready=view.ReadInt32(12),preferred=view.ReadDouble(3792),suspend=view.ReadUInt32(3800),uiFlags=view.ReadUInt32(3804),updated=view.ReadInt64(3872),now=Environment.TickCount64,foreground=session.IsForeground,target=view.ReadDouble(80),cameraMode=view.ReadInt32(160),visor=view.ReadInt32(164),samples=view.ReadUInt64(176),autoCenter=view.ReadInt32(3768)==1,cameraX=view.ReadDouble(96),cameraY=view.ReadDouble(104),cameraWidth=view.ReadDouble(112),cameraHeight=view.ReadDouble(120),mapWidth=view.ReadDouble(128),mapHeight=view.ReadDouble(136),playerX=view.ReadDouble(144),playerY=view.ReadDouble(152)},new JsonSerializerOptions{WriteIndented=true}));return;
     }
@@ -48,7 +49,35 @@ try{
     }
     var library=Path.GetFullPath(args.Length>3?args[3]:"artifacts/native/StoneshardBridge.dll");
     if(args.Length>1&&args[1]=="Verify"){await Verification.Run(session,library,args.Length>4?args[4]:"artifacts/verification-v031.json");return;}
+    if(args.Length>2&&args[1]=="Stability"){
+        await using(var testData=File.OpenRead(Path.Combine(Path.GetDirectoryName(session.Path)!,"data.win"))){
+            string testHash=Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(testData));
+            if(testHash!=GameCompatibility.IsolatedDataHash)throw new InvalidOperationException("Stability mode only permits the verified ShardTest0 isolated game copy.");
+        }
+    }
     using var bridge=await EngineBridge.ConnectAsync(session,library);
+    if(args.Length>2&&args[1]=="Stability"){
+        int seconds=Math.Clamp(int.Parse(args[2]),1,900);
+        var start=await bridge.SendAsync(EngineCommand.Refresh);
+        if(!start.SceneReady)throw new InvalidOperationException("Stability check requires an already loaded isolated test map.");
+        var enabled=await bridge.SendAsync(EngineCommand.CombatPreviewSet,1);
+        if(enabled.Error!=0)throw new IOException(enabled.Detail);
+        var watch=System.Diagnostics.Stopwatch.StartNew();int samples=0;ulong prior=start.Samples;
+        try{
+        while(watch.Elapsed.TotalSeconds<seconds){
+            await Task.Delay(500);
+            var snapshot=await bridge.SendAsync(EngineCommand.Refresh);
+            if(snapshot.Error!=0||!snapshot.Ready||!snapshot.Fresh||snapshot.Samples<=prior||!snapshot.SceneReady)throw new IOException("Stability snapshot stopped advancing or test map disconnected.");
+            prior=snapshot.Samples;samples++;
+            if(samples%60==0)Console.WriteLine(JsonSerializer.Serialize(new{seconds=watch.Elapsed.TotalSeconds,samples,nativeSamples=prior,snapshot.PlayerX,snapshot.PlayerY,snapshot.SceneGeneration}));
+        }
+        Console.WriteLine(JsonSerializer.Serialize(new{passed=true,seconds=watch.Elapsed.TotalSeconds,samples,nativeSamples=prior,note="Live snapshot polling with combat preview enabled; no automated movement, combat or saving requested."}));
+        }finally{
+            try{await bridge.SendAsync(EngineCommand.CombatPreviewSet,start.CombatEnabled?1:0);}
+            catch(Exception e){Console.Error.WriteLine("Test preview cleanup unconfirmed: "+e.Message);}
+        }
+        return;
+    }
     if(args.Length>1&&args[1]=="InspectItems"){
         for(int i=0;i<256;i++){
             var item=await bridge.SendAsync(EngineCommand.Inspect,3000+i);

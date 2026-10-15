@@ -42,6 +42,8 @@ public sealed class UserPreferences
     public string? BackupFolder {get;set;}
     public string? QuickRestoreArchive {get;set;}
     public double DrinkThreshold {get;set;}=25;
+    public const string DefaultJourneyChecklist="饮水容器已补满\n口粮足够本次路程\n绷带、夹板与止血用品\n火把及备用火把\n装备耐久与修理\n任务道具和返程路线\n需要保留的采集材料\n离开旅店前正常存档";
+    public string JourneyChecklist {get;set;}=DefaultJourneyChecklist;
     public bool HasHudPlacement {get;set;}
     public double HudX {get;set;}=16;
     public double HudY {get;set;}=16;
@@ -74,6 +76,7 @@ public sealed class UserPreferences
             if(!double.IsFinite(p.StatsX)||!double.IsFinite(p.StatsY))p.StatsPlaced=false;
             p.LastSpeed=Math.Clamp(p.LastSpeed,1,4);p.Scale=Math.Clamp(p.Scale,.75,1.35);p.BottomOffset=Math.Clamp(p.BottomOffset,-60,180);
             p.DrinkThreshold=double.IsFinite(p.DrinkThreshold)?Math.Clamp(p.DrinkThreshold,10,80):25;
+            p.JourneyChecklist=(p.JourneyChecklist??DefaultJourneyChecklist)[..Math.Min((p.JourneyChecklist??DefaultJourneyChecklist).Length,4000)];
             if(!double.IsFinite(p.HudX)||!double.IsFinite(p.HudY)||!double.IsFinite(p.HudWidth)||!double.IsFinite(p.HudHeight))p.HasHudPlacement=false;
             if(p.BackupFolder is not null){try{p.BackupFolder=Path.IsPathFullyQualified(p.BackupFolder)?Path.GetFullPath(p.BackupFolder):null;}catch(ArgumentException){p.BackupFolder=null;}}
             return p;

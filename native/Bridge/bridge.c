@@ -5,6 +5,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include "action_ui_policy.h"
+#include "runner_context.h"
 
 // GameMaker x64 ABI. Only numeric values are used by the initial speed backend.
 typedef struct RV { union { double real; int64_t integer; void* ptr; }; uint32_t flags; int32_t kind; } RV;
@@ -25,6 +26,11 @@ static UINT_PTR rebind_timer;
 static DWORD window_thread;
 static UINT_PTR tick_timer;
 static bool in_callback;
+static bool enter_runner(RunnerContext* saved){
+    // Verified from this build's YYC script prologues and variable_instance_get.
+    return runner_enter(saved,&in_callback,(void**)(game+0x990b720),
+                        (void**)(game+0x990b738),(void**)(game+0x990b740));
+}
 static unsigned automation_flags;
 static int forage_phase,forage_count;
 static int stow_status,stow_count;
@@ -160,15 +166,15 @@ static void CALLBACK rebind_tick(HWND ignored,UINT msg,UINT_PTR timer,DWORD time
 }
 static LRESULT CALLBACK bridge_proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
     if(msg==WM_KEYUP)release_walk_key((unsigned)wp);
-    if(msg==WM_KEYDOWN&&shared->walk_keys_enabled&&walk_key_direction((unsigned)wp)&&!in_callback){
-        in_callback=true;void* saved_self=*(void**)(game+0x990b738);
+    RunnerContext saved;
+    if(msg==WM_KEYDOWN&&shared->walk_keys_enabled&&walk_key_direction((unsigned)wp)&&enter_runner(&saved)){
         DWORD pid=0;GetWindowThreadProcessId(GetForegroundWindow(),&pid);
         uint64_t now=GetTickCount64(),heartbeat=(uint64_t)InterlockedCompareExchange64(&shared->heartbeat,0,0);
         InterlockedIncrement(&shared->status_seq);refresh_scene();
         bool consumed=handle_walk_key((unsigned)wp,((uintptr_t)lp&(1u<<30))!=0,walk_modifiers_down(),pid==GetCurrentProcessId(),now>=heartbeat&&now-heartbeat<=1500);
         InterlockedIncrement(&shared->status_seq);
         if(consumed)publish(shared->error,NULL);
-        *(void**)(game+0x990b738)=saved_self;in_callback=false;
+        runner_leave(&saved);
         if(consumed)return 0;
     }
     if(msg==WM_LBUTTONDOWN||msg==WM_RBUTTONDOWN||msg==WM_MBUTTONDOWN||msg==WM_KEYDOWN)inventory_input_at=GetTickCount64();
@@ -177,20 +183,28 @@ static LRESULT CALLBACK bridge_proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         if(shared->walk_state==WALK_ACTIVE&&!in_callback&&!(msg==WM_LBUTTONDOWN&&(ULONG_PTR)GetMessageExtraInfo()==WALK_MOUSE_MARKER)){
             // Stop our old path before forwarding this input. The native event
             // may then start its replacement path without a later timer killing it.
-            in_callback=true;void* saved_self=*(void**)(game+0x990b738);
-            finish_walk(WALK_MANUAL,true);
-            *(void**)(game+0x990b738)=saved_self;in_callback=false;
+            if(enter_runner(&saved)){
+                finish_walk(WALK_MANUAL,true);
+                runner_leave(&saved);
+            }else{
+                // Forward the user's input without calling GML from inside
+                // another script. Never cancel their replacement path later.
+                finish_walk(WALK_MANUAL,false);
+            }
         }
     if(msg==BRIDGE_MESSAGE && wp==BRIDGE_MAGIC){
-        if(in_callback)return 0;in_callback=true;
-        void* saved_self=*(void**)(game+0x990b738);
+        if(!enter_runner(&saved))return 0;
         if(!global_scope)init_gm();shared->label_hook_ready=install_label_renderer();on_command();
-        *(void**)(game+0x990b738)=saved_self;in_callback=false;return 0;
+        runner_leave(&saved);return 0;
     }
     if(msg==WM_TIMER && wp==tick_timer){
-        if(in_callback)return 0;in_callback=true;void* saved_self=*(void**)(game+0x990b738);
-        if(!global_scope)init_gm();shared->label_hook_ready=install_label_renderer();publish(shared->error,NULL);
-        *(void**)(game+0x990b738)=saved_self;in_callback=false;
+        if(!enter_runner(&saved))return 0;
+        if(!global_scope)init_gm();shared->label_hook_ready=install_label_renderer();
+        // A command deferred during a native script is serviced once at the
+        // next idle tick. on_command retains its deadline/session checks.
+        if(processed_seq!=InterlockedCompareExchange(&shared->request_seq,0,0))on_command();
+        else publish(shared->error,NULL);
+        runner_leave(&saved);
         return 0;
     }
     if(msg==WM_NCDESTROY){
@@ -232,7 +246,7 @@ __declspec(dllexport) DWORD WINAPI BridgeStart(void* ignored) {
     // Startup can expose a window before the frame manager is initialized.
     // Do not publish a mapping until a valid baseline exists; allow a later retry.
     baseline=get_speed();if(!isfinite(baseline)||baseline<1 || baseline>240)return start_failed(15);
-    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v25.%lu",GetCurrentProcessId());
+    wchar_t name[128];swprintf(name,128,L"Local\\StoneshardCompanion.v26.%lu",GetCurrentProcessId());
     mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,NULL,PAGE_READWRITE,0,131072,name);
     if(!mapping)return start_failed(12);
     if(GetLastError()==ERROR_ALREADY_EXISTS)return start_failed(13);

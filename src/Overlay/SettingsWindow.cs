@@ -16,6 +16,12 @@ public sealed class SettingsWindow : Window
         var panel=new StackPanel{Margin=new Thickness(26)};Content=new ScrollViewer{Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
         panel.Children.Add(new TextBlock{Text=$"行旅辅助 · v{App.Version}",FontSize=24,Margin=new Thickness(0,0,0,12)});
         status=new TextBlock{Text=owner.Status,TextWrapping=TextWrapping.Wrap,Foreground=Brushes.LightGray};panel.Children.Add(status);
+        Button("立即存档 · Ctrl+Alt+F5（原版 Load 读取）",owner.SaveNow);
+        Button("出发清单（自定义，不自动执行操作）",owner.OpenJourneyChecklist);
+        Button("复制连接诊断与反馈模板",()=>{
+            try{Clipboard.SetText($"晶石助手 v{App.Version}\n{owner.Status}\n请补充：游戏来源、模组名称/版本、已开启的助手功能、复现步骤和完整报错。");}
+            catch(System.Runtime.InteropServices.ExternalException){owner.ShowError("剪贴板正在被占用，请稍后重试。");}
+        });
         AddText("配置目录："+UserPreferences.Folder);
         Button("逐点退回 · 宝石与契约历练",owner.OpenBuildEditor);
         AddText("浮窗外观（即时生效）",16);
@@ -47,7 +53,6 @@ public sealed class SettingsWindow : Window
         AddText("属性面板可拖动标题移动；全部／特别关注切换，悬停点星标保存关注。悬停数值查看原生基础值和来源；不可确认的来源不会伪造。打开游戏原生面板时自动避让。");
         Button("马车饲料：选择材料／一键制作",owner.OpenFodder);
         AddText("随时存档",16);
-        Button("立即存档（原版 Load 读取）",owner.SaveNow);
         AddText("不需要睡觉。停步并等待回合结算完成后，保存当前进度到原版自动存档；读档仍在游戏 Load 界面选择。保存前后保留备份，显示成功前会校验文件。自动存档槽位按游戏规则轮换。");
         AddText("属性与技能",16);
         Button("逐点退回 · 宝石与契约历练",owner.OpenBuildEditor);
@@ -62,7 +67,7 @@ public sealed class SettingsWindow : Window
         slider.ValueChanged+=(_,_)=>{owner.Preferences.DrinkThreshold=slider.Value;threshold.Text=$"口渴达到 {slider.Value:0}% 时喝水";owner.SavePreferences();};panel.Children.Add(slider);
         Check("自动火把：保持点亮，耗尽后选用随身备用火把",()=>owner.Preferences.AutoTorch,v=>owner.Preferences.AutoTorch=v);
         AddText("自动补给仅在前台、安全且空闲时执行；出现敌人、受伤、移动、菜单或加载时暂停。保留原版物品和回合消耗，操作未确认时暂停自动功能。手动切换火把会关闭自动保持点亮。");
-        AddText("Ctrl + Alt + 1 / 2 / 3 / 4　选择速度\nCtrl + Alt + H　开合面甲\nCtrl + Alt + C / R　镜头居中 / 角色视角\nCtrl + Alt + L　物品常显\nCtrl + Alt + W / T　喝水 / 火把\nCtrl + Alt + 方向键　跨入对应方向的相邻地图\nCtrl + Alt + Home　角色走到地图中心\nCtrl + Alt + End　停止行走\nCtrl + Alt + B　一键备份\nCtrl + Alt + S　停止并恢复正常\nCtrl + Alt + O　隐藏 / 显示面板");
+        AddText("Ctrl + Alt + 1 / 2 / 3 / 4　选择速度\nCtrl + Alt + H　开合面甲\nCtrl + Alt + C / R　镜头居中 / 角色视角\nCtrl + Alt + L　物品常显\nCtrl + Alt + W / T　喝水 / 火把\nCtrl + Alt + 方向键　跨入对应方向的相邻地图\nCtrl + Alt + Home　角色走到地图中心\nCtrl + Alt + End　停止行走\nCtrl + Alt + F5　立即存档\nCtrl + Alt + B　一键备份已落盘进度\nCtrl + Alt + S　停止并恢复正常\nCtrl + Alt + O　隐藏 / 显示面板");
         Button("存档管理",owner.OpenSaves);Button("一键备份已落盘的存档",()=>owner.Backup(false));Button("恢复默认面板位置与大小",owner.ResetLayout);Button("停止并恢复正常",owner.Reset);Button("退出助手",owner.RequestExit);
         AddText("图标：Game-icons.net · CC BY 3.0，作者与来源见随附 ATTRIBUTION.md。",11);
         void AddText(string text,int size=13)=>panel.Children.Add(new TextBlock{Text=text,TextWrapping=TextWrapping.Wrap,FontSize=size,LineHeight=23,Margin=new Thickness(0,14,0,8),Foreground=Brushes.LightGray});

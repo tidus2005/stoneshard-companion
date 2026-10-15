@@ -41,6 +41,7 @@ public partial class MainWindow : Window
     private EngineBridge? bridge;
     private GameSession? session;
     private SettingsWindow? settings;
+    private JourneyChecklistWindow? journeyChecklist;
     private nint hwnd;
     private bool liveSaving;
     private bool busy,closing,closed,folded,polling,keysRegistered,resetPending,walkStarting;
@@ -60,6 +61,8 @@ public partial class MainWindow : Window
         menu.Items.Add("设置与快捷键",null,(_,_)=>Dispatcher.Invoke(OpenSettings));
         menu.Items.Add("马车饲料",null,(_,_)=>Dispatcher.Invoke(OpenFodder));
         menu.Items.Add("一键备份存档",null,(_,_)=>Dispatcher.Invoke(()=>Backup(false)));
+        menu.Items.Add("立即存档 · Ctrl+Alt+F5",null,(_,_)=>Dispatcher.Invoke(SaveNow));
+        menu.Items.Add("出发清单",null,(_,_)=>Dispatcher.Invoke(OpenJourneyChecklist));
         menu.Items.Add("存档管理",null,(_,_)=>Dispatcher.Invoke(OpenSaves));
         menu.Items.Add("显示 / 隐藏增强栏",null,(_,_)=>Dispatcher.Invoke(ToggleFold));
         menu.Items.Add("停止并恢复正常",null,(_,_)=>Dispatcher.Invoke(Reset));
@@ -97,6 +100,7 @@ public partial class MainWindow : Window
         shortcuts[16]=(0x23,()=>Walk(0));
         shortcuts[17]=(0x24,()=>Walk(5));
         shortcuts[9]=(0x57,()=>RunAction(EngineCommand.Drink));shortcuts[10]=(0x54,()=>RunAction(EngineCommand.Torch));shortcuts[11]=(0x42,()=>Backup(false));
+        shortcuts[23]=(0x74,SaveNow);
         if(App.UiTestMode)return;
         bool stopKey=Native.RegisterHotKey(hwnd,20,0x4003,0x53),foldKey=Native.RegisterHotKey(hwnd,21,0x4003,0x4F);
         if(!stopKey||!foldKey)ShowError("恢复或隐藏快捷键被占用，请从系统托盘操作。");
@@ -298,6 +302,10 @@ public partial class MainWindow : Window
     }
     public void ToggleFold(){folded=!folded;if(folded)HideHud();}
     public void SavePreferences(){try{Preferences.Save();hud.ApplyAppearance();stats.ApplyAppearance();}catch(Exception e){ShowError("设置保存失败："+e.Message);}}
+    public void OpenJourneyChecklist(){
+        if(journeyChecklist is null){journeyChecklist=new(this){Owner=this};journeyChecklist.Closed+=(_,_)=>journeyChecklist=null;}
+        journeyChecklist.Show();journeyChecklist.Activate();
+    }
     public void ChangeBackupFolder(string folder)
     {
         if(Saves.Busy)throw new InvalidOperationException("请等待存档操作完成。");

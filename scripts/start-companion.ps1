@@ -3,7 +3,8 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $stage = 'locate application'
 try {
-    $appFile = Join-Path $projectRoot 'artifacts\development\0.3.35\app\StoneshardCompanion.dll'
+    $version = ([xml](Get-Content -LiteralPath (Join-Path $projectRoot 'src\Overlay\StoneshardCompanion.csproj') -Raw)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+    $appFile = Join-Path $projectRoot "artifacts\development\$version\app\StoneshardCompanion.dll"
     if (-not (Test-Path -LiteralPath $appFile)) {
         $appFile = Join-Path $projectRoot 'src\Overlay\bin\Release\net8.0-windows\StoneshardCompanion.dll'
     }
